@@ -45,6 +45,7 @@ This document outlines how to exercise the distributed rate limiter manually usi
    ```bash
    make compose-up
    ```
+   The Makefile automatically switches between the Compose plugin (`docker compose`) and the legacy `docker-compose` binary. Ensure one of them is installed before running this target.
 2. **Wait for health** – monitor the logs until both containers report readiness.
 3. **Positive case via REST**
    ```bash
@@ -68,47 +69,52 @@ This document outlines how to exercise the distributed rate limiter manually usi
 
 ## 4. Kubernetes smoke test
 
-1. **Build a local image** (Kind example shown):
+1. **Prepare a Kind cluster (if you don't already have one)**:
+   ```bash
+   kind create cluster --name rate-limiter
+   ```
+2. **Build a local image** (Kind example shown):
    ```bash
    make docker-build IMAGE=rate-limiter:local
    kind load docker-image rate-limiter:local
    ```
-2. **Deploy dependencies**
+3. **Deploy dependencies**
    ```bash
    kubectl apply -f deploy/kubernetes/nats.yaml
    kubectl apply -f deploy/kubernetes/rate-limiter.yaml
    ```
-3. **Wait for readiness**
+4. **Wait for readiness**
    ```bash
    kubectl rollout status deployment/nats
    kubectl rollout status deployment/rate-limiter
    ```
-4. **Port-forward the REST service**
+5. **Port-forward the REST service**
    ```bash
    kubectl port-forward service/rate-limiter 8080:8080 &
    PORT_FWD_PID=$!
    sleep 2
    ```
-5. **Positive request**
+6. **Positive request**
    ```bash
    curl -sS -X POST http://localhost:8080/api/v1/allow \
      -H "Content-Type: application/json" \
      -d '{"key":"kube-user","tokens":1,"max_tokens":10,"refill_rate":3}' | jq
    ```
-6. **Negative request** – overrun the allocation:
+7. **Negative request** – overrun the allocation:
    ```bash
    curl -sS -X POST http://localhost:8080/api/v1/allow \
      -H "Content-Type: application/json" \
      -d '{"key":"kube-user","tokens":20,"max_tokens":10,"refill_rate":3}' | jq
    ```
-7. **Clean up port forward**
+8. **Clean up port forward**
    ```bash
    kill $PORT_FWD_PID
    ```
-8. **Tear down resources when finished**
+9. **Tear down resources when finished**
    ```bash
    kubectl delete -f deploy/kubernetes/rate-limiter.yaml
    kubectl delete -f deploy/kubernetes/nats.yaml
+   kind delete cluster --name rate-limiter
    ```
 
 ## 5. Automated smoke test (optional)

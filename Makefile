@@ -3,6 +3,7 @@
 BINARY := ratelimiter
 IMAGE ?= rate-limiter:local
 KUBE_NAMESPACE ?= rate-limiter
+DOCKER_COMPOSE ?= $(shell if command -v docker-compose >/dev/null 2>&1; then echo docker-compose; else echo "docker compose"; fi)
 
 build:
 	mkdir -p bin
@@ -18,10 +19,10 @@ docker-build:
 	docker build -t $(IMAGE) .
 
 compose-up:
-	cd deploy && docker compose up --build
+        cd deploy && $(DOCKER_COMPOSE) up --build
 
 compose-down:
-	cd deploy && docker compose down
+        cd deploy && $(DOCKER_COMPOSE) down
 
 kube-apply:
 	kubectl apply -f deploy/kubernetes/nats.yaml

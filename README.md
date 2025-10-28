@@ -68,6 +68,8 @@ make compose-up
 
 This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance). Stop the stack with `make compose-down`.
 
+> **Note:** The Makefile target auto-detects whether the Docker Compose plugin (`docker compose`) or the standalone `docker-compose` binary is installed and uses whichever is available. Ensure one of them is installed before running the target.
+
 ### Building a container
 
 ```
@@ -76,7 +78,13 @@ make docker-build
 
 ### Deploying to Kubernetes
 
-First build and push an image that your cluster can access (or load it into a local cluster such as Kind):
+First build and push an image that your cluster can access (or load it into a local cluster such as Kind). If you are using Kind and do not yet have a cluster running, create one first:
+
+```bash
+kind create cluster --name rate-limiter
+```
+
+Then build the image:
 
 ```bash
 make docker-build IMAGE=ghcr.io/your-user/rate-limiter:latest
