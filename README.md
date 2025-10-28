@@ -10,6 +10,7 @@ This project showcases a self-contained distributed rate-limiter implemented in 
 - **NATS integration** implemented directly over the NATS protocol with an in-memory substitute for local development.
 - **Docker & Kubernetes manifests** for containerised deployments.
 - **Automated tests** covering protobuf codecs and rate-limiter synchronisation semantics.
+- **GitHub Actions pipeline** that builds, tests, deploys to a Kind cluster, and runs a REST smoke test.
 
 ## Project layout
 
@@ -29,6 +30,10 @@ This project showcases a self-contained distributed rate-limiter implemented in 
 │   └── kubernetes/        # Example Deployment + Service manifests
 └── README.md
 ```
+
+## Continuous integration pipeline
+
+The repository ships with a GitHub Actions workflow located at [`.github/workflows/ci.yml`](.github/workflows/ci.yml). It runs formatting, `go vet`, unit tests, and provisions a temporary [Kind](https://kind.sigs.k8s.io/) cluster to validate the Kubernetes manifests. During the smoke test the container image is built, loaded into the cluster, deployed alongside NATS, and a REST request is executed against the service to ensure end-to-end functionality.
 
 ## Getting started
 
@@ -71,11 +76,42 @@ make docker-build
 
 ### Deploying to Kubernetes
 
+First build and push an image that your cluster can access (or load it into a local cluster such as Kind):
+
+```bash
+make docker-build IMAGE=ghcr.io/your-user/rate-limiter:latest
+```
+
 Apply the manifests under `deploy/kubernetes` (update the container image reference in `rate-limiter.yaml` to match your registry):
 
-```
+```bash
 kubectl apply -f deploy/kubernetes/nats.yaml
 kubectl apply -f deploy/kubernetes/rate-limiter.yaml
+```
+
+Wait for the pods to become ready and inspect their status:
+
+```bash
+kubectl get pods -l app=rate-limiter
+kubectl rollout status deployment/rate-limiter
+```
+
+To send a REST request against the cluster from your workstation, port-forward the HTTP service and execute a `curl` request:
+
+```bash
+kubectl port-forward service/rate-limiter 8080:8080 &
+PORT_FORWARD_PID=$!
+sleep 2
+curl -sS -X POST http://localhost:8080/api/v1/allow \
+  -H "Content-Type: application/json" \
+  -d '{"key":"demo","tokens":1,"max_tokens":10,"refill_rate":5}' | jq
+kill $PORT_FORWARD_PID
+```
+
+For automated verification you can rely on the provided smoke test script (which is what the CI pipeline runs):
+
+```bash
+make kube-smoke IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo
 ```
 
 The deployment exposes port `8080` for REST and `8081` for the gRPC endpoint. Update the `ConfigMap` inside the manifest to customise limits or environment variables.

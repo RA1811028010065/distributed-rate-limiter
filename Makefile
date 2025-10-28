@@ -1,7 +1,8 @@
-.PHONY: build run test docker-build compose-up compose-down kube-apply kube-delete
+.PHONY: build run test docker-build compose-up compose-down kube-apply kube-delete kube-smoke
 
 BINARY := ratelimiter
 IMAGE ?= rate-limiter:local
+KUBE_NAMESPACE ?= rate-limiter
 
 build:
 	mkdir -p bin
@@ -29,3 +30,6 @@ kube-apply:
 kube-delete:
 	kubectl delete -f deploy/kubernetes/rate-limiter.yaml || true
 	kubectl delete -f deploy/kubernetes/nats.yaml || true
+
+kube-smoke:
+	IMAGE=$(IMAGE) NAMESPACE=$(KUBE_NAMESPACE) hack/ci/k8s-smoke.sh

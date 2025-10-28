@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master", "work", "develop", "feature/**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  unit:
+    name: Unit tests and static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Verify formatting
+        run: |
+          set -euo pipefail
+          files=$(find . -name '*.go' -not -path './vendor/*')
+          if [ -n "$files" ]; then
+            fmt=$(gofmt -l $files | tr '\n' ' ')
+            if [ -n "$fmt" ]; then
+              echo "The following files need gofmt:" >&2
+              for f in $fmt; do
+                echo "  - $f" >&2
+              done
+              exit 1
+            fi
+          fi
+      - name: Run go vet
+        run: go vet ./...
+      - name: Run unit tests
+        run: go test ./...
+
+  k8s-smoke:
+    name: Kind smoke test
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Go (for tooling such as go test during smoke script)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "latest"
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: ratelimiter-ci
+      - name: Build container image
+        run: docker build -t ratelimiter:ci .
+      - name: Load image into kind
+        run: kind load docker-image ratelimiter:ci --name ratelimiter-ci
+      - name: Deploy to kind and run smoke test
+        env:
+          IMAGE: ratelimiter:ci
+          NAMESPACE: ratelimiter-ci
+        run: hack/ci/k8s-smoke.sh
