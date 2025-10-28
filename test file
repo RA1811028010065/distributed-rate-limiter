@@ -1,0 +1,126 @@
+# Manual Testing Guide
+
+This document outlines how to exercise the distributed rate limiter manually using the tooling shipped with the repository. The steps cover local execution, containerised validation, and Kubernetes-based smoke tests along with teardown instructions.
+
+## 1. Prerequisites
+
+- Go 1.21+
+- Docker (required for Docker Compose and image builds)
+- kubectl and access to a Kubernetes cluster (Kind works well for local testing)
+- `jq` for pretty-printing JSON responses (optional but recommended)
+
+## 2. Local binary harness
+
+1. **Run unit tests (optional sanity check)**
+   ```bash
+   go test ./...
+   ```
+2. **Start the service with the in-memory event bus**
+   ```bash
+   go run ./cmd/ratelimiter
+   ```
+3. **Send a positive case** – the first request should be allowed:
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"local-user","tokens":1,"max_tokens":5,"refill_rate":2}' | jq
+   ```
+   Expect `{"allowed":true}`.
+4. **Send a negative case** – exceed the available tokens:
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"local-user","tokens":10,"max_tokens":5,"refill_rate":2}' | jq
+   ```
+   Expect `{"allowed":false}`.
+5. **Inspect bucket state (optional)**
+   ```bash
+   curl -sS http://localhost:8080/api/v1/debug | jq
+   ```
+6. **Clean up** – stop the Go process (Ctrl+C).
+
+## 3. Docker Compose stack
+
+1. **Start the stack** (NATS + service synchronising via NATS):
+   ```bash
+   make compose-up
+   ```
+2. **Wait for health** – monitor the logs until both containers report readiness.
+3. **Positive case via REST**
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"compose-user","tokens":1,"max_tokens":5,"refill_rate":2}' | jq
+   ```
+4. **Negative case** – issue repeated calls until the allowance is exhausted. For example:
+   ```bash
+   for i in $(seq 1 6); do
+     curl -sS -X POST http://localhost:8080/api/v1/allow \
+       -H "Content-Type: application/json" \
+       -d '{"key":"compose-user","tokens":1,"max_tokens":5,"refill_rate":1}' | jq
+   done
+   ```
+   The final iterations should return `allowed: false`.
+5. **Clean up**
+   ```bash
+   make compose-down
+   ```
+
+## 4. Kubernetes smoke test
+
+1. **Build a local image** (Kind example shown):
+   ```bash
+   make docker-build IMAGE=rate-limiter:local
+   kind load docker-image rate-limiter:local
+   ```
+2. **Deploy dependencies**
+   ```bash
+   kubectl apply -f deploy/kubernetes/nats.yaml
+   kubectl apply -f deploy/kubernetes/rate-limiter.yaml
+   ```
+3. **Wait for readiness**
+   ```bash
+   kubectl rollout status deployment/nats
+   kubectl rollout status deployment/rate-limiter
+   ```
+4. **Port-forward the REST service**
+   ```bash
+   kubectl port-forward service/rate-limiter 8080:8080 &
+   PORT_FWD_PID=$!
+   sleep 2
+   ```
+5. **Positive request**
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"kube-user","tokens":1,"max_tokens":10,"refill_rate":3}' | jq
+   ```
+6. **Negative request** – overrun the allocation:
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"kube-user","tokens":20,"max_tokens":10,"refill_rate":3}' | jq
+   ```
+7. **Clean up port forward**
+   ```bash
+   kill $PORT_FWD_PID
+   ```
+8. **Tear down resources when finished**
+   ```bash
+   kubectl delete -f deploy/kubernetes/rate-limiter.yaml
+   kubectl delete -f deploy/kubernetes/nats.yaml
+   ```
+
+## 5. Automated smoke test (optional)
+
+The repository ships with a helper script mirroring the CI pipeline:
+```bash
+make kube-smoke IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo
+```
+This target provisions a temporary namespace, deploys the manifests, hits the REST API, and ensures cleanup on success or failure.
+
+## 6. Troubleshooting tips
+
+- Use `kubectl logs deployment/rate-limiter` to inspect the service when running in Kubernetes.
+- Adjust `max_tokens` and `refill_rate` to simulate different traffic profiles.
+- Ensure `NATS_URL` is reachable when running the distributed mode.
