@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rate-limiter-config
+  labels:
+    app: rate-limiter
+data:
+  HTTP_ADDR: ":8080"
+  GRPC_ADDR: ":8081"
+  NATS_URL: "nats://nats:4222"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rate-limiter
+spec:
+  selector:
+    app: rate-limiter
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: grpc
+      port: 8081
+      targetPort: 8081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rate-limiter
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rate-limiter
+  template:
+    metadata:
+      labels:
+        app: rate-limiter
+    spec:
+      containers:
+        - name: rate-limiter
+          image: your-dockerhub-username/rate-limiter:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: rate-limiter-config
+          ports:
+            - containerPort: 8080
+            - containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /api/v1/debug
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/debug
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
