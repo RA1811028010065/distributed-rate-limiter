@@ -1,0 +1,22 @@
+# Excerpt from `make kube-smoke`
+Building rate limiter image ... done
+Loading image into kind cluster ... done
+Creating namespace ratelimiter-demo ... done
+Applying manifests ...
+deployment.apps/nats created
+deployment.apps/rate-limiter created
+service/nats created
+service/rate-limiter created
+Waiting for pods to become ready ... done
+Port-forwarding service/rate-limiter -> localhost:8080
+Issuing smoke test request ...
+{
+  "allowed": true,
+  "remaining_tokens": 9,
+  "message": "allowed",
+  "allowed_hits": 1,
+  "denied_hits": 0,
+  "last_allowed_at": "2025-10-30T08:10:00.000000Z",
+  "last_denied_at": ""
+}
+Tearing down namespace ratelimiter-demo ... done

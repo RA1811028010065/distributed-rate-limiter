@@ -6,7 +6,8 @@ This project showcases a self-contained distributed rate-limiter implemented in 
 
 - **Token bucket rate limiting** with distributed synchronisation through NATS or an in-memory fallback.
 - **gRPC-style API** transported over HTTP using a lightweight server implementation compatible with protobuf-encoded messages.
-- **REST API** for simple integration and observability endpoints.
+- **REST API** for simple integration and observability endpoints, including live statistics and health checks.
+- **Structured decision logging** that fans out to stdout and an on-disk log file for auditability.
 - **NATS integration** implemented directly over the NATS protocol with an in-memory substitute for local development.
 - **Docker & Kubernetes manifests** for containerised deployments.
 - **Automated tests** covering protobuf codecs and rate-limiter synchronisation semantics.
@@ -43,6 +44,8 @@ The repository ships with a GitHub Actions workflow located at [`.github/workflo
 - Docker (for container builds)
 - kubectl & Kubernetes cluster (for deployment)
 
+For platform-specific tooling installation commands refer to [`docs/tooling.md`](docs/tooling.md).
+
 ### Running locally
 
 ```bash
@@ -55,8 +58,10 @@ go run ./cmd/ratelimiter
 
 The REST API defaults to `http://localhost:8080`:
 
-- `POST /api/v1/allow` – body: `{ "key": "user-1", "tokens": 1, "max_tokens": 10, "refill_rate": 5 }`
-- `GET /api/v1/debug` – returns the in-memory bucket state.
+- `POST /api/v1/allow` – body: `{ "key": "user-1", "tokens": 1, "max_tokens": 10, "refill_rate": 5 }`. The server automatically annotates the caller's source IP when omitted.
+- `GET /api/v1/stats` – returns the distributed statistics table (per key and per source).
+- `GET /api/v1/debug` – returns the bucket state plus the same statistics snapshot for deeper diagnostics.
+- `GET /healthz` – liveness endpoint.
 
 The gRPC-style endpoint is available on `localhost:8081` at the method path `/ratelimiter.v1.RateLimiter/Allow` and expects protobuf framed payloads as described in `proto/rate_limiter.proto`.
 
@@ -142,7 +147,9 @@ The protobuf schema is defined in [`proto/rate_limiter.proto`](proto/rate_limite
 go test ./...
 ```
 
-The tests validate the protobuf codec round-trip logic and verify that multiple rate-limiter instances stay synchronised through the event bus.
+The tests validate the protobuf codec round-trip logic, ensure the distributed statistics table stays in sync, and verify that multiple rate-limiter instances remain co-ordinated through the event bus.
+
+Detailed manual validation flows for local binaries, Docker Compose, and Kubernetes are documented in [`test file`](test%20file). Each flow now includes example outputs captured in the [`logs/`](logs) directory so you can compare your run against a known-good baseline.
 
 ## Extending
 

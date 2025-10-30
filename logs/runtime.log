@@ -1,0 +1,2 @@
+2025/10/30 08:00:00.102345 UTC decision=ALLOW key=local-user source=127.0.0.1 tokens=1 capacity=5 refill_rate=2.00 remaining=4.00 allowed_hits=1 denied_hits=0 version=1
+2025/10/30 08:00:00.302678 UTC decision=DENY key=local-user source=127.0.0.1 tokens=10 capacity=5 refill_rate=2.00 remaining=0.00 allowed_hits=1 denied_hits=1 version=2

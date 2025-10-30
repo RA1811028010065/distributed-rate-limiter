@@ -9,12 +9,17 @@ message AllowRequest {
   int64 tokens = 2;
   int64 max_tokens = 3;
   int64 refill_rate = 4;
+  string source = 5;
 }
 
 message AllowResponse {
   bool allowed = 1;
   int64 remaining_tokens = 2;
   string message = 3;
+  int64 allowed_hits = 4;
+  int64 denied_hits = 5;
+  string last_allowed_at = 6;
+  string last_denied_at = 7;
 }
 
 service RateLimiter {

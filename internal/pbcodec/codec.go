@@ -7,12 +7,17 @@ type AllowRequest struct {
 	Tokens     int64  `json:"tokens"`
 	MaxTokens  int64  `json:"max_tokens"`
 	RefillRate int64  `json:"refill_rate"`
+	Source     string `json:"source"`
 }
 
 type AllowResponse struct {
 	Allowed         bool   `json:"allowed"`
 	RemainingTokens int64  `json:"remaining_tokens"`
 	Message         string `json:"message"`
+	AllowedHits     int64  `json:"allowed_hits"`
+	DeniedHits      int64  `json:"denied_hits"`
+	LastAllowedAt   string `json:"last_allowed_at"`
+	LastDeniedAt    string `json:"last_denied_at"`
 }
 
 func MarshalAllowRequest(req *AllowRequest) []byte {
@@ -23,6 +28,9 @@ func MarshalAllowRequest(req *AllowRequest) []byte {
 	buf = appendInt64Field(buf, 2, req.Tokens)
 	buf = appendInt64Field(buf, 3, req.MaxTokens)
 	buf = appendInt64Field(buf, 4, req.RefillRate)
+	if req.Source != "" {
+		buf = appendVarintField(buf, 5, []byte(req.Source))
+	}
 	return buf
 }
 
@@ -74,6 +82,16 @@ func UnmarshalAllowRequest(b []byte, req *AllowRequest) error {
 				return err
 			}
 			req.RefillRate = int64(v)
+		case 5:
+			if wireType != 2 {
+				return errors.New("invalid wire type for field 5")
+			}
+			var data []byte
+			data, b, err = readBytes(b)
+			if err != nil {
+				return err
+			}
+			req.Source = string(data)
 		default:
 			var err error
 			b, err = skipField(wireType, b)
@@ -99,6 +117,16 @@ func MarshalAllowResponse(res *AllowResponse) []byte {
 	if res.Message != "" {
 		buf = appendVarint(buf, uint64((3<<3)|2))
 		buf = appendBytes(buf, []byte(res.Message))
+	}
+	buf = appendInt64Field(buf, 4, res.AllowedHits)
+	buf = appendInt64Field(buf, 5, res.DeniedHits)
+	if res.LastAllowedAt != "" {
+		buf = appendVarint(buf, uint64((6<<3)|2))
+		buf = appendBytes(buf, []byte(res.LastAllowedAt))
+	}
+	if res.LastDeniedAt != "" {
+		buf = appendVarint(buf, uint64((7<<3)|2))
+		buf = appendBytes(buf, []byte(res.LastDeniedAt))
 	}
 	return buf
 }
@@ -141,6 +169,46 @@ func UnmarshalAllowResponse(b []byte, res *AllowResponse) error {
 				return err
 			}
 			res.Message = string(data)
+		case 4:
+			if wireType != 0 {
+				return errors.New("invalid wire type for field 4")
+			}
+			var v uint64
+			v, b, err = readVarint(b)
+			if err != nil {
+				return err
+			}
+			res.AllowedHits = int64(v)
+		case 5:
+			if wireType != 0 {
+				return errors.New("invalid wire type for field 5")
+			}
+			var v uint64
+			v, b, err = readVarint(b)
+			if err != nil {
+				return err
+			}
+			res.DeniedHits = int64(v)
+		case 6:
+			if wireType != 2 {
+				return errors.New("invalid wire type for field 6")
+			}
+			var data []byte
+			data, b, err = readBytes(b)
+			if err != nil {
+				return err
+			}
+			res.LastAllowedAt = string(data)
+		case 7:
+			if wireType != 2 {
+				return errors.New("invalid wire type for field 7")
+			}
+			var data []byte
+			data, b, err = readBytes(b)
+			if err != nil {
+				return err
+			}
+			res.LastDeniedAt = string(data)
 		default:
 			var err error
 			b, err = skipField(wireType, b)

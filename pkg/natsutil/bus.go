@@ -38,7 +38,7 @@ func (b *memoryBus) Publish(subject string, msg []byte) error {
 	handlers := b.subs[subject]
 	for _, h := range handlers {
 		copyMsg := append([]byte(nil), msg...)
-		go h(copyMsg)
+		h(copyMsg)
 	}
 	return nil
 }

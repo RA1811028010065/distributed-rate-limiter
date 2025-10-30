@@ -6,7 +6,7 @@ import (
 )
 
 func TestAllowRequestRoundTrip(t *testing.T) {
-	req := &AllowRequest{Key: "user:1", Tokens: 2, MaxTokens: 5, RefillRate: 1}
+	req := &AllowRequest{Key: "user:1", Tokens: 2, MaxTokens: 5, RefillRate: 1, Source: "10.0.0.5"}
 	data := MarshalAllowRequest(req)
 	var decoded AllowRequest
 	if err := UnmarshalAllowRequest(data, &decoded); err != nil {
@@ -18,7 +18,15 @@ func TestAllowRequestRoundTrip(t *testing.T) {
 }
 
 func TestAllowResponseRoundTrip(t *testing.T) {
-	res := &AllowResponse{Allowed: true, RemainingTokens: 3, Message: "ok"}
+	res := &AllowResponse{
+		Allowed:         true,
+		RemainingTokens: 3,
+		Message:         "ok",
+		AllowedHits:     9,
+		DeniedHits:      2,
+		LastAllowedAt:   "2025-10-30T00:00:00Z",
+		LastDeniedAt:    "2025-10-30T00:01:00Z",
+	}
 	data := MarshalAllowResponse(res)
 	var decoded AllowResponse
 	if err := UnmarshalAllowResponse(data, &decoded); err != nil {

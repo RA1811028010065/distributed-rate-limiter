@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,24 +24,31 @@ func main() {
 	httpAddr := flag.String("http", getEnv("HTTP_ADDR", ":8080"), "HTTP listen address")
 	grpcAddr := flag.String("grpc", getEnv("GRPC_ADDR", ":8081"), "gRPC listen address")
 	natsURL := flag.String("nats", os.Getenv("NATS_URL"), "NATS connection URL")
+	logPath := flag.String("log-path", getEnv("LOG_PATH", "logs/runtime.log"), "file to append structured decisions and runtime logs")
 	flag.Parse()
+
+	logger, cleanup, err := setupLogger(*logPath)
+	if err != nil {
+		log.Fatalf("failed to configure logger: %v", err)
+	}
+	defer cleanup()
 
 	var bus natsutil.Bus
 	if *natsURL != "" {
 		client, err := natsutil.Connect(*natsURL)
 		if err != nil {
-			log.Printf("failed to connect to NATS (%s): %v, falling back to in-memory bus", *natsURL, err)
+			logger.Printf("failed to connect to NATS (%s): %v, falling back to in-memory bus", *natsURL, err)
 			bus = natsutil.NewInMemoryBus()
 		} else {
 			bus = client
-			log.Printf("connected to NATS server at %s", *natsURL)
+			logger.Printf("connected to NATS server at %s", *natsURL)
 		}
 	} else {
 		bus = natsutil.NewInMemoryBus()
-		log.Printf("using in-memory bus; set NATS_URL to enable NATS synchronization")
+		logger.Printf("using in-memory bus; set NATS_URL to enable NATS synchronization")
 	}
 
-	limiter := ratelimiter.New(bus)
+	limiter := ratelimiter.New(bus, ratelimiter.WithLogger(logger))
 
 	httpSrv := &http.Server{
 		Addr:    *httpAddr,
@@ -53,7 +63,7 @@ func main() {
 	errCh := make(chan error, 2)
 
 	go func() {
-		log.Printf("HTTP server listening on %s", *httpAddr)
+		logger.Printf("HTTP server listening on %s", *httpAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
@@ -65,7 +75,7 @@ func main() {
 			errCh <- err
 			return
 		}
-		log.Printf("gRPC server listening on %s", *grpcAddr)
+		logger.Printf("gRPC server listening on %s", *grpcAddr)
 		if err := grpcSrv.Serve(listener); err != nil {
 			errCh <- err
 		}
@@ -76,15 +86,15 @@ func main() {
 
 	select {
 	case sig := <-sigCh:
-		log.Printf("received signal %s, shutting down", sig)
+		logger.Printf("received signal %s, shutting down", sig)
 	case err := <-errCh:
-		log.Printf("server error: %v", err)
+		logger.Printf("server error: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	httpSrv.Shutdown(ctx)
-	log.Printf("shutdown complete")
+	logger.Printf("shutdown complete")
 }
 
 func getEnv(key, fallback string) string {
@@ -92,4 +102,25 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func setupLogger(logPath string) (*log.Logger, func(), error) {
+	outputs := []io.Writer{os.Stdout}
+	cleanup := func() {}
+	if strings.TrimSpace(logPath) != "" {
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+			return nil, cleanup, err
+		}
+		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return nil, cleanup, err
+		}
+		outputs = append(outputs, f)
+		cleanup = func() {
+			f.Close()
+		}
+	}
+	writer := io.MultiWriter(outputs...)
+	logger := log.New(writer, "", log.LstdFlags|log.Lmicroseconds|log.LUTC)
+	return logger, cleanup, nil
 }

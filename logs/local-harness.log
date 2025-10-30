@@ -1,0 +1,33 @@
+# Local harness sample session
+$ go run ./cmd/ratelimiter
+2025/10/30 07:59:59.999999 UTC HTTP server listening on :8080
+2025/10/30 07:59:59.999999 UTC gRPC server listening on :8081
+
+# In another shell
+go test ./...
+
+curl -sS -X POST http://localhost:8080/api/v1/allow \
+  -H "Content-Type: application/json" \
+  -d '{"key":"local-user","tokens":1,"max_tokens":5,"refill_rate":2}' | jq
+{
+  "allowed": true,
+  "remaining_tokens": 4,
+  "message": "allowed",
+  "allowed_hits": 1,
+  "denied_hits": 0,
+  "last_allowed_at": "2025-10-30T08:00:00.102345Z",
+  "last_denied_at": ""
+}
+
+curl -sS -X POST http://localhost:8080/api/v1/stats | jq
+[
+  {
+    "key": "local-user",
+    "source": "127.0.0.1",
+    "allowed": 1,
+    "denied": 0,
+    "last_allowed_at": "2025-10-30T08:00:00.102345Z",
+    "last_request_at": "2025-10-30T08:00:00.102345Z",
+    "remaining_tokens": 4
+  }
+]

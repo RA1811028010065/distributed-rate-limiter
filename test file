@@ -1,6 +1,6 @@
 # Manual Testing Guide
 
-This document outlines how to exercise the distributed rate limiter manually using the tooling shipped with the repository. The steps cover local execution, containerised validation, and Kubernetes-based smoke tests along with teardown instructions.
+This document outlines how to exercise the distributed rate limiter manually using the tooling shipped with the repository. The steps cover local execution, containerised validation, and Kubernetes-based smoke tests along with teardown instructions. Example transcripts of successful runs are stored under [`logs/`](logs) so you can diff your own output against a known-good baseline.
 
 ## 1. Prerequisites
 
@@ -33,11 +33,21 @@ This document outlines how to exercise the distributed rate limiter manually usi
      -d '{"key":"local-user","tokens":10,"max_tokens":5,"refill_rate":2}' | jq
    ```
    Expect `{"allowed":false}`.
-5. **Inspect bucket state (optional)**
+5. **Inspect live statistics**
+   ```bash
+   curl -sS http://localhost:8080/api/v1/stats | jq
+   ```
+   The response lists every key/source pair along with allow/deny counters and timestamps.
+6. **Inspect bucket state (optional)**
    ```bash
    curl -sS http://localhost:8080/api/v1/debug | jq
    ```
-6. **Clean up** – stop the Go process (Ctrl+C).
+   This aggregates both the bucket internals and the statistics snapshot used by `/api/v1/stats`.
+7. **Review structured logs** – by default the service mirrors all decisions to `logs/runtime.log`.
+   ```bash
+   tail -n 20 logs/runtime.log
+   ```
+8. **Clean up** – stop the Go process (Ctrl+C).
 
 ## 3. Docker Compose stack
 
@@ -46,7 +56,7 @@ This document outlines how to exercise the distributed rate limiter manually usi
    make compose-up
    ```
    The Makefile automatically switches between the Compose plugin (`docker compose`) and the legacy `docker-compose` binary. Ensure one of them is installed before running this target.
-2. **Wait for health** – monitor the logs until both containers report readiness.
+2. **Wait for health** – monitor the logs until both containers report readiness (`docker compose logs -f`).
 3. **Positive case via REST**
    ```bash
    curl -sS -X POST http://localhost:8080/api/v1/allow \
@@ -62,7 +72,12 @@ This document outlines how to exercise the distributed rate limiter manually usi
    done
    ```
    The final iterations should return `allowed: false`.
-5. **Clean up**
+5. **Inspect stats & logs**
+   ```bash
+   curl -sS http://localhost:8080/api/v1/stats | jq
+   docker compose logs rate-limiter | tail -n 20
+   ```
+6. **Clean up**
    ```bash
    make compose-down
    ```
@@ -106,11 +121,16 @@ This document outlines how to exercise the distributed rate limiter manually usi
      -H "Content-Type: application/json" \
      -d '{"key":"kube-user","tokens":20,"max_tokens":10,"refill_rate":3}' | jq
    ```
-8. **Clean up port forward**
+8. **Observe the distributed stats table**
+   ```bash
+   curl -sS http://localhost:8080/api/v1/stats | jq
+   ```
+   You should see the `kube-user` entry accumulate both allowed and denied counters.
+9. **Clean up port forward**
    ```bash
    kill $PORT_FWD_PID
    ```
-9. **Tear down resources when finished**
+10. **Tear down resources when finished**
    ```bash
    kubectl delete -f deploy/kubernetes/rate-limiter.yaml
    kubectl delete -f deploy/kubernetes/nats.yaml
@@ -123,10 +143,11 @@ The repository ships with a helper script mirroring the CI pipeline:
 ```bash
 make kube-smoke IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo
 ```
-This target provisions a temporary namespace, deploys the manifests, hits the REST API, and ensures cleanup on success or failure.
+This target provisions a temporary namespace, deploys the manifests, hits the REST API, and ensures cleanup on success or failure. Logs from a successful CI-style run are captured in [`logs/ci-smoke.log`](logs/ci-smoke.log).
 
 ## 6. Troubleshooting tips
 
 - Use `kubectl logs deployment/rate-limiter` to inspect the service when running in Kubernetes.
 - Adjust `max_tokens` and `refill_rate` to simulate different traffic profiles.
 - Ensure `NATS_URL` is reachable when running the distributed mode.
+- Set `LOG_PATH=/custom/path.log` when you need logs to land elsewhere.
