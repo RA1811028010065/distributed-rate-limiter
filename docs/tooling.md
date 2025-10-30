@@ -93,3 +93,7 @@ kind delete cluster --name validate
 ```
 
 Remember to log out and back in if you added your user to the Docker group on Linux.
+
+## Docker networking considerations
+
+The Docker Compose stack allocates a dedicated bridge network called `ratelimiter_net` and defaults to the `172.31.255.0/28` subnet so it does not conflict with typical corporate address plans. Export `RATE_LIMITER_NETWORK` or `RATE_LIMITER_SUBNET` before running `make compose-up` if your host already uses that range or if you prefer to pin the stack to a different segment.

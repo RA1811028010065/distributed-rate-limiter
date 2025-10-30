@@ -55,7 +55,7 @@ This document outlines how to exercise the distributed rate limiter manually usi
    ```bash
    make compose-up
    ```
-   The target runs in detached mode so your SSH session remains interactive. The Makefile automatically switches between the Compose plugin (`docker compose`) and the legacy `docker-compose` binary—ensure one of them is installed before running this target.
+   The target runs in detached mode so your SSH session remains interactive. When the Compose plugin is available the Makefile adds `--wait` so the new health checks in `deploy/docker-compose.yml` must pass before the command exits. Set the `RATE_LIMITER_NETWORK` or `RATE_LIMITER_SUBNET` environment variables (for example, `RATE_LIMITER_SUBNET=10.201.0.0/28 make compose-up`) if Docker's default networking has previously interrupted your SSH session—the stack now defaults to a dedicated `ratelimiter_net` bridge on `172.31.255.0/28` to avoid such clashes.
 2. **Wait for health** – follow the logs until both containers report readiness:
    ```bash
    make compose-logs

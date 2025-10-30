@@ -107,7 +107,9 @@ The gRPC-style endpoint is available on `localhost:8081` at the method path `/ra
 make compose-up
 ```
 
-This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance) in detached mode, so your shell remains usable during the run. Tail the logs with `make compose-logs`. The target runs an explicit `compose build` step before `compose up`, ensuring compatibility with both the Docker Compose plugin and the legacy `docker-compose` binary. Stop the stack with `make compose-down`.
+This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance) in detached mode, so your shell remains usable during the run. The Makefile drives `docker compose up --detach --build --quiet-pull --remove-orphans` and automatically adds `--wait --wait-timeout 120` when the modern Compose plugin is available, allowing the new container health checks in `deploy/docker-compose.yml` to gate completion. Tail the logs with `make compose-logs` and stop the stack with `make compose-down`.
+
+To prevent Docker's default bridge network from hijacking existing routes (which could momentarily sever SSH connectivity on remote hosts), the Compose file now provisions a dedicated bridge network named `ratelimiter_net` with the default subnet `172.31.255.0/28`. Override `RATE_LIMITER_NETWORK` and/or `RATE_LIMITER_SUBNET` when invoking `make compose-up` if that range clashes with your infrastructure.
 
 ### Building a container
 

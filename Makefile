@@ -4,6 +4,7 @@ BINARY := ratelimiter
 IMAGE ?= rate-limiter:local
 KUBE_NAMESPACE ?= rate-limiter
 DOCKER_COMPOSE ?= $(shell if command -v docker-compose >/dev/null 2>&1; then echo docker-compose; else echo "docker compose"; fi)
+COMPOSE_WAIT_FLAGS ?= $(if $(findstring docker compose,$(DOCKER_COMPOSE)),--wait --wait-timeout 120,)
 
 build:
 	mkdir -p bin
@@ -13,20 +14,19 @@ run:
 	go run ./cmd/ratelimiter
 
 test:
-        go test -v ./...
+	go test -v ./...
 
 docker-build:
 	docker build -t $(IMAGE) .
 
 compose-up:
-        cd deploy && $(DOCKER_COMPOSE) build
-        cd deploy && $(DOCKER_COMPOSE) up -d
+	cd deploy && COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 $(DOCKER_COMPOSE) up --detach --build --quiet-pull --remove-orphans $(COMPOSE_WAIT_FLAGS)
 
 compose-down:
-        cd deploy && $(DOCKER_COMPOSE) down
+	cd deploy && $(DOCKER_COMPOSE) down
 
 compose-logs:
-        cd deploy && $(DOCKER_COMPOSE) logs -f
+	cd deploy && $(DOCKER_COMPOSE) logs -f
 
 kube-apply:
 	kubectl apply -f deploy/kubernetes/nats.yaml

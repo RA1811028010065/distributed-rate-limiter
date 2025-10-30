@@ -12,12 +12,12 @@ true
 $ curl -sS http://localhost:8080/api/v1/stats | jq '.[] | {key,source,allowed,denied,remaining_tokens}'
 {
   "key": "compose-user",
-  "source": "172.19.0.1",
+  "source": "172.31.255.1",
   "allowed": 1,
   "denied": 0,
   "remaining_tokens": 4
 }
 
 $ docker compose logs rate-limiter | tail -n 3
-rate-limiter-service-1  | 2025/10/30 08:05:01.000000 UTC decision=ALLOW key=compose-user source=172.19.0.1 tokens=1 capacity=5 refill_rate=2.00 remaining=4.00 allowed_hits=1 denied_hits=0 version=1
-rate-limiter-service-1  | 2025/10/30 08:05:04.500000 UTC decision=DENY key=compose-user source=172.19.0.1 tokens=6 capacity=5 refill_rate=1.00 remaining=0.00 allowed_hits=1 denied_hits=1 version=2
+rate-limiter-service-1  | 2025/10/30 08:05:01.000000 UTC decision=ALLOW key=compose-user source=172.31.255.1 tokens=1 capacity=5 refill_rate=2.00 remaining=4.00 allowed_hits=1 denied_hits=0 version=1
+rate-limiter-service-1  | 2025/10/30 08:05:04.500000 UTC decision=DENY key=compose-user source=172.31.255.1 tokens=6 capacity=5 refill_rate=1.00 remaining=0.00 allowed_hits=1 denied_hits=1 version=2

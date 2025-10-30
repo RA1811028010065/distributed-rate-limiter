@@ -7,6 +7,14 @@ services:
       - "4222:4222"
       - "8222:8222"
     command: ["-js"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - rate-limit-net
   rate-limiter:
     build: ..
     environment:
@@ -16,3 +24,19 @@ services:
       - "8081:8081"
     depends_on:
       - nats
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - rate-limit-net
+
+networks:
+  rate-limit-net:
+    driver: bridge
+    name: ${RATE_LIMITER_NETWORK:-ratelimiter_net}
+    ipam:
+      config:
+        - subnet: ${RATE_LIMITER_SUBNET:-172.31.255.0/28}
