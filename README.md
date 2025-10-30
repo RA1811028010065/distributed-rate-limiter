@@ -34,7 +34,7 @@ This project showcases a self-contained distributed rate-limiter implemented in 
 
 ## Continuous integration pipeline
 
-The repository ships with a GitHub Actions workflow located at [`.github/workflows/ci.yml`](.github/workflows/ci.yml). It runs formatting, `go vet`, unit tests, and provisions a temporary [Kind](https://kind.sigs.k8s.io/) cluster to validate the Kubernetes manifests. During the smoke test the container image is built, loaded into the cluster, deployed alongside NATS, and a REST request is executed against the service to ensure end-to-end functionality. The smoke harness now waits for each deployment to report readiness, retries the verification request with bounded timeouts, and emits cluster diagnostics automatically on failure so problems can be triaged quickly both in CI and on local machines.
+The repository ships with a GitHub Actions workflow located at [`.github/workflows/ci.yml`](.github/workflows/ci.yml). It runs formatting, `go vet`, unit tests, and provisions a temporary [Kind](https://kind.sigs.k8s.io/) cluster to validate the Kubernetes manifests. During the smoke test the container image is built, loaded into the cluster, deployed alongside NATS, and a REST request is executed against the service to ensure end-to-end functionality. The smoke harness now waits for each deployment to report readiness, confirms the `rate-limiter` service has active endpoints before issuing traffic, retries the verification request with bounded timeouts, and emits cluster diagnostics automatically on failure so problems can be triaged quickly both in CI and on local machines.
 
 ## Getting started
 

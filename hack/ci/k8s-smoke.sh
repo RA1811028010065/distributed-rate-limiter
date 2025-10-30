@@ -58,6 +58,24 @@ wait_for_ready_pods() {
   return 1
 }
 
+wait_for_service_endpoints() {
+  local svc=$1
+  local timeout=$2
+  local deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    local endpoints
+    endpoints=$(kubectl get endpoints "${svc}" -n "${NAMESPACE}" -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+    if [[ -n "${endpoints}" ]]; then
+      log "Service '${svc}' has active endpoints"
+      return 0
+    fi
+    sleep 5
+  done
+  log "Timed out waiting for service '${svc}' endpoints"
+  kubectl get endpoints "${svc}" -n "${NAMESPACE}" || true
+  return 1
+}
+
 log "Ensuring namespace '${NAMESPACE}' exists"
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -77,6 +95,7 @@ kubectl set image deployment/rate-limiter rate-limiter="${IMAGE}" -n "${NAMESPAC
 log "Waiting for rate-limiter rollout"
 kubectl rollout status deployment/rate-limiter -n "${NAMESPACE}" --timeout=240s
 wait_for_ready_pods 240
+wait_for_service_endpoints rate-limiter 120
 
 log "Executing smoke test request"
 response=$(kubectl run rate-limiter-smoke --restart=Never --rm -i \
