@@ -107,7 +107,7 @@ The gRPC-style endpoint is available on `localhost:8081` at the method path `/ra
 make compose-up
 ```
 
-This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance). The target now runs an explicit `compose build` step before `compose up`, ensuring compatibility with both the Docker Compose plugin and the legacy `docker-compose` binary. Stop the stack with `make compose-down`.
+This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance) in detached mode, so your shell remains usable during the run. Tail the logs with `make compose-logs`. The target runs an explicit `compose build` step before `compose up`, ensuring compatibility with both the Docker Compose plugin and the legacy `docker-compose` binary. Stop the stack with `make compose-down`.
 
 ### Building a container
 

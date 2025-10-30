@@ -1,4 +1,4 @@
-.PHONY: build run test docker-build compose-up compose-down kube-apply kube-delete kube-smoke
+.PHONY: build run test docker-build compose-up compose-down compose-logs kube-apply kube-delete kube-smoke
 
 BINARY := ratelimiter
 IMAGE ?= rate-limiter:local
@@ -20,10 +20,13 @@ docker-build:
 
 compose-up:
         cd deploy && $(DOCKER_COMPOSE) build
-        cd deploy && $(DOCKER_COMPOSE) up
+        cd deploy && $(DOCKER_COMPOSE) up -d
 
 compose-down:
         cd deploy && $(DOCKER_COMPOSE) down
+
+compose-logs:
+        cd deploy && $(DOCKER_COMPOSE) logs -f
 
 kube-apply:
 	kubectl apply -f deploy/kubernetes/nats.yaml

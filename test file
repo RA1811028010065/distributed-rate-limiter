@@ -55,8 +55,12 @@ This document outlines how to exercise the distributed rate limiter manually usi
    ```bash
    make compose-up
    ```
-   The Makefile automatically switches between the Compose plugin (`docker compose`) and the legacy `docker-compose` binary. Ensure one of them is installed before running this target.
-2. **Wait for health** – monitor the logs until both containers report readiness (`docker compose logs -f` or `docker-compose logs -f`, depending on which binary you installed).
+   The target runs in detached mode so your SSH session remains interactive. The Makefile automatically switches between the Compose plugin (`docker compose`) and the legacy `docker-compose` binary—ensure one of them is installed before running this target.
+2. **Wait for health** – follow the logs until both containers report readiness:
+   ```bash
+   make compose-logs
+   ```
+   Press `Ctrl+C` after both services are ready; the containers continue running in the background.
 3. **Positive case via REST**
    ```bash
    curl -sS -X POST http://localhost:8080/api/v1/allow \
