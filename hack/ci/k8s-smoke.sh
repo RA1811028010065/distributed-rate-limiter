@@ -28,6 +28,36 @@ cleanup() {
 
 trap cleanup EXIT
 
+wait_for_ready_pods() {
+  local timeout=$1
+  local deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    local desired
+    desired=$(kubectl get deployment/rate-limiter -n "${NAMESPACE}" -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
+    if [[ -z "${desired}" ]]; then
+      sleep 5
+      continue
+    fi
+
+    local ready
+    ready=$(kubectl get deployment/rate-limiter -n "${NAMESPACE}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+    if [[ -z "${ready}" ]]; then
+      ready=0
+    fi
+
+    if [[ "${ready}" -eq "${desired}" ]]; then
+      log "${ready}/${desired} rate-limiter pods ready"
+      return 0
+    fi
+
+    sleep 5
+  done
+
+  log "Timed out waiting for rate-limiter pods to become ready"
+  kubectl get pods -l app=rate-limiter -n "${NAMESPACE}" || true
+  return 1
+}
+
 log "Ensuring namespace '${NAMESPACE}' exists"
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -46,7 +76,7 @@ kubectl set image deployment/rate-limiter rate-limiter="${IMAGE}" -n "${NAMESPAC
 
 log "Waiting for rate-limiter rollout"
 kubectl rollout status deployment/rate-limiter -n "${NAMESPACE}" --timeout=240s
-kubectl wait --for=condition=ready pod -l app=rate-limiter -n "${NAMESPACE}" --timeout=240s
+wait_for_ready_pods 240
 
 log "Executing smoke test request"
 response=$(kubectl run rate-limiter-smoke --restart=Never --rm -i \
