@@ -143,7 +143,7 @@ The repository ships with a helper script mirroring the CI pipeline:
 ```bash
 make kube-smoke IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo
 ```
-This target provisions a temporary namespace, deploys the manifests, hits the REST API, and ensures cleanup on success or failure. Logs from a successful CI-style run are captured in [`logs/ci-smoke.log`](logs/ci-smoke.log).
+This target provisions a temporary namespace, deploys the manifests, hits the REST API, and ensures cleanup on success or failure. The script now waits for both the NATS and rate-limiter deployments to become ready, retries the verification `curl` with a strict timeout, and automatically dumps pod logs if anything goes wrong so you immediately know why the run failed. Logs from a successful CI-style run are captured in [`logs/ci-smoke.log`](logs/ci-smoke.log).
 
 ## 6. Troubleshooting tips
 
