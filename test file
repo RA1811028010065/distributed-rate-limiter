@@ -13,7 +13,7 @@ This document outlines how to exercise the distributed rate limiter manually usi
 
 1. **Run unit tests (optional sanity check)**
    ```bash
-   go test ./...
+   go test -v ./...
    ```
 2. **Start the service with the in-memory event bus**
    ```bash
@@ -25,25 +25,25 @@ This document outlines how to exercise the distributed rate limiter manually usi
      -H "Content-Type: application/json" \
      -d '{"key":"local-user","tokens":1,"max_tokens":5,"refill_rate":2}' | jq
    ```
-   Expect `{"allowed":true}`.
+   Expect `allowed: true` along with `algorithm: "token_bucket"` and the `strategy_reason` field describing why that mode is active.
 4. **Send a negative case** – exceed the available tokens:
    ```bash
    curl -sS -X POST http://localhost:8080/api/v1/allow \
      -H "Content-Type: application/json" \
      -d '{"key":"local-user","tokens":10,"max_tokens":5,"refill_rate":2}' | jq
    ```
-   Expect `{"allowed":false}`.
+   Expect `allowed: false` plus the algorithm that rejected the call (typically still `token_bucket` for this quick check).
 5. **Inspect live statistics**
    ```bash
    curl -sS http://localhost:8080/api/v1/stats | jq
    ```
-   The response lists every key/source pair along with allow/deny counters and timestamps.
+   The response lists every key/source pair along with allow/deny counters, burst and sustain scores, the active algorithm, and timestamps.
 6. **Inspect bucket state (optional)**
    ```bash
    curl -sS http://localhost:8080/api/v1/debug | jq
    ```
    This aggregates both the bucket internals and the statistics snapshot used by `/api/v1/stats`.
-7. **Review structured logs** – by default the service mirrors all decisions to `logs/runtime.log`.
+7. **Review structured logs** – by default the service mirrors all decisions (including the chosen algorithm and reason) to `logs/runtime.log`.
    ```bash
    tail -n 20 logs/runtime.log
    ```

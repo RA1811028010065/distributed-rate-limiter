@@ -5,9 +5,7 @@ system to others and quickly exercise its behaviour from a clean Ubuntu 24.04 wo
 
 ## What the application does
 
-The service enforces token bucket limits across multiple instances while keeping per-source accounting data in
-sync via NATS. Every decision is logged with structured metadata so that operators can trace how requests were
-handled. The API surface exposes:
+The service enforces hybrid rate limits (token bucket, leaky bucket, and sliding window) across multiple instances while keeping per-source accounting data in sync via NATS. Every decision is logged with structured metadata so that operators can trace how requests were handled and which algorithm was active. The API surface exposes:
 
 - `POST /api/v1/allow` — evaluates whether a caller identified by `key` and optional `source` may consume tokens.
 - `GET /api/v1/stats` — returns live counters for each tracked key/source pair.
@@ -32,10 +30,14 @@ The response contains the decision and the updated bucket state:
 ```json
 {
   "allowed": true,
-  "remaining": 9,
-  "max_tokens": 10,
-  "refill_rate": 10,
-  "reset_at": "2024-01-01T12:00:00Z"
+  "remaining_tokens": 9,
+  "message": "allowed",
+  "allowed_hits": 1,
+  "denied_hits": 0,
+  "last_allowed_at": "2025-10-30T00:00:00Z",
+  "last_denied_at": "",
+  "algorithm": "token_bucket",
+  "strategy_reason": "balanced throughput"
 }
 ```
 
@@ -47,8 +49,7 @@ After sending traffic, query the stats endpoint to see per-source counters:
 curl http://localhost:8080/api/v1/stats | jq
 ```
 
-The JSON response includes the total number of allowed and denied requests plus the last activity timestamp for
-each `(key, source)` tuple.
+The JSON response includes the total number of allowed and denied requests, the active algorithm, burst/sustain scores, and the last activity timestamp for each `(key, source)` tuple.
 
 ### Observe structured logs
 
@@ -69,7 +70,9 @@ Example entry:
   "key": "demo-user",
   "source": "1.2.3.4",
   "allowed": true,
-  "remaining": 9
+  "remaining": 9,
+  "algorithm": "token_bucket",
+  "reason": "balanced throughput"
 }
 ```
 

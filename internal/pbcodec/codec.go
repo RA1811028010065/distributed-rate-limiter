@@ -18,6 +18,8 @@ type AllowResponse struct {
 	DeniedHits      int64  `json:"denied_hits"`
 	LastAllowedAt   string `json:"last_allowed_at"`
 	LastDeniedAt    string `json:"last_denied_at"`
+	Algorithm       string `json:"algorithm"`
+	StrategyReason  string `json:"strategy_reason"`
 }
 
 func MarshalAllowRequest(req *AllowRequest) []byte {
@@ -128,6 +130,14 @@ func MarshalAllowResponse(res *AllowResponse) []byte {
 		buf = appendVarint(buf, uint64((7<<3)|2))
 		buf = appendBytes(buf, []byte(res.LastDeniedAt))
 	}
+	if res.Algorithm != "" {
+		buf = appendVarint(buf, uint64((8<<3)|2))
+		buf = appendBytes(buf, []byte(res.Algorithm))
+	}
+	if res.StrategyReason != "" {
+		buf = appendVarint(buf, uint64((9<<3)|2))
+		buf = appendBytes(buf, []byte(res.StrategyReason))
+	}
 	return buf
 }
 
@@ -209,6 +219,26 @@ func UnmarshalAllowResponse(b []byte, res *AllowResponse) error {
 				return err
 			}
 			res.LastDeniedAt = string(data)
+		case 8:
+			if wireType != 2 {
+				return errors.New("invalid wire type for field 8")
+			}
+			var data []byte
+			data, b, err = readBytes(b)
+			if err != nil {
+				return err
+			}
+			res.Algorithm = string(data)
+		case 9:
+			if wireType != 2 {
+				return errors.New("invalid wire type for field 9")
+			}
+			var data []byte
+			data, b, err = readBytes(b)
+			if err != nil {
+				return err
+			}
+			res.StrategyReason = string(data)
 		default:
 			var err error
 			b, err = skipField(wireType, b)

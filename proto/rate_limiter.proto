@@ -20,6 +20,8 @@ message AllowResponse {
   int64 denied_hits = 5;
   string last_allowed_at = 6;
   string last_denied_at = 7;
+  string algorithm = 8;
+  string strategy_reason = 9;
 }
 
 service RateLimiter {

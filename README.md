@@ -1,16 +1,17 @@
 # Distributed Rate Limiter
 
-This project showcases a self-contained distributed rate-limiter implemented in Go. It exposes both REST and gRPC-style endpoints, synchronises state via NATS or an in-memory bus, and is fully containerised for deployment on Kubernetes. For a concise overview with sample interactions, see [`docs/overview.md`](docs/overview.md); for a deep architectural explanation covering every component and technology choice, read [`docs/product.md`](docs/product.md).
+This project showcases a self-contained distributed rate-limiter implemented in Go. It exposes both REST and gRPC-style endpoints, synchronises state via NATS or an in-memory bus, and is fully containerised for deployment on Kubernetes. For a concise overview with sample interactions, see [`docs/overview.md`](docs/overview.md); for a deep architectural explanation covering every component and technology choice, read [`docs/product.md`](docs/product.md). Algorithm-by-algorithm deep dives live under [`docs/patterns/`](docs/patterns/).
 
 ## Features
 
+- **Hybrid rate limiting** that auto-selects between token bucket, leaky bucket, and sliding window techniques based on live traffic telemetry, keeping bursty and sustained workloads in check.【F:internal/ratelimiter/service.go†L84-L343】
 - **Token bucket rate limiting** with distributed synchronisation through NATS or an in-memory fallback.
 - **gRPC-style API** transported over HTTP using a lightweight server implementation compatible with protobuf-encoded messages.
 - **REST API** for simple integration and observability endpoints, including live statistics and health checks.
 - **Structured decision logging** that fans out to stdout and an on-disk log file for auditability.
 - **NATS integration** implemented directly over the NATS protocol with an in-memory substitute for local development.
 - **Docker & Kubernetes manifests** for containerised deployments.
-- **Automated tests** covering protobuf codecs and rate-limiter synchronisation semantics.
+- **Automated tests** covering protobuf codecs, hybrid strategy switching, and rate-limiter synchronisation semantics.【F:internal/ratelimiter/service_test.go†L9-L186】
 - **GitHub Actions pipeline** that builds, tests, deploys to a Kind cluster, and runs a REST smoke test.
 
 ## Project layout
@@ -85,7 +86,7 @@ With tooling ready, clone the repository and follow the flows in [the manual tes
 
 ```bash
 # Run automated tests
-go test ./...
+go test -v ./...
 
 # Start the service with the in-memory event bus
 go run ./cmd/ratelimiter
@@ -177,10 +178,10 @@ The protobuf schema is defined in [`proto/rate_limiter.proto`](proto/rate_limite
 ## Testing
 
 ```
-go test ./...
+go test -v ./...
 ```
 
-The tests validate the protobuf codec round-trip logic, ensure the distributed statistics table stays in sync, and verify that multiple rate-limiter instances remain co-ordinated through the event bus.
+The tests validate the protobuf codec round-trip logic, ensure the distributed statistics table stays in sync, and verify that the hybrid controller selects the best strategy for bursty and sustained workloads while multiple rate-limiter instances remain co-ordinated through the event bus.【F:internal/ratelimiter/service_test.go†L9-L186】
 
 Detailed manual validation flows for local binaries, Docker Compose, and Kubernetes are documented in [`test file`](test%20file). Each flow now includes example outputs captured in the [`logs/`](logs) directory so you can compare your run against a known-good baseline.
 

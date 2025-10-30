@@ -26,6 +26,8 @@ func TestAllowResponseRoundTrip(t *testing.T) {
 		DeniedHits:      2,
 		LastAllowedAt:   "2025-10-30T00:00:00Z",
 		LastDeniedAt:    "2025-10-30T00:01:00Z",
+		Algorithm:       "token_bucket",
+		StrategyReason:  "default",
 	}
 	data := MarshalAllowResponse(res)
 	var decoded AllowResponse

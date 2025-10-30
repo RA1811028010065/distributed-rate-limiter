@@ -13,7 +13,7 @@ run:
 	go run ./cmd/ratelimiter
 
 test:
-	go test ./...
+        go test -v ./...
 
 docker-build:
 	docker build -t $(IMAGE) .

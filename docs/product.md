@@ -6,7 +6,7 @@ This guide explains every moving part in the distributed rate limiter, how they 
 
 1. A caller submits a request to the REST endpoint (`POST /api/v1/allow`) or to the gRPC-style endpoint (`/ratelimiter.v1.RateLimiter/Allow`).
 2. The API layer validates the payload, annotates the source metadata, and passes the request to the core rate limiter.
-3. The rate limiter enforces a token-bucket policy, records detailed statistics, and publishes state changes.
+3. The rate limiter enforces a hybrid policy (token bucket, leaky bucket, or sliding window), records detailed statistics, and publishes state changes.
 4. State updates fan out over the messaging bus (NATS in production, in-memory during tests). Each replica keeps its local cache consistent by applying those events.
 5. The service responds to the caller and writes structured decision logs for observability.
 6. Automated smoke tests and GitHub Actions verify the full journey by building an image, deploying to a Kind cluster, and executing real traffic against the Kubernetes Service.
@@ -33,15 +33,18 @@ See `cmd/ratelimiter/main.go` for the full setup logic.【F:cmd/ratelimiter/main
 
 ## 4. Core rate limiter (`internal/ratelimiter`)
 
-* **Token bucket mechanics:** Requests consume tokens from a per-key bucket that refills over time. Default values ensure requests without explicit configuration still get reasonable limits.【F:internal/ratelimiter/service.go†L76-L173】
-* **Distributed synchronisation:** Each state transition is published as a `syncEvent`. Peers subscribe to the same subject and reconcile using version numbers to avoid stale writes.【F:internal/ratelimiter/service.go†L175-L347】【F:internal/ratelimiter/service.go†L349-L512】
-* **Statistics table:** The service records per-key and per-source counters, last request timestamps, and current token balance. This data powers the `/stats` and `/debug` endpoints and feeds into decision logs.【F:internal/ratelimiter/service.go†L18-L75】【F:internal/ratelimiter/service.go†L418-L512】
-* **Structured logging:** Every decision emits JSON logs detailing the request, outcome, and updated counters, aiding auditing and anomaly detection.【F:internal/ratelimiter/service.go†L216-L292】
+* **Hybrid controller:** `updateFlowMetrics` maintains exponential moving averages, variance, and burst/sustain scores for every key/source pair. `applyStrategyLocked` evaluates those metrics, enforces a cooldown, and selects the best strategy (token bucket, leaky bucket, or sliding window) while resetting algorithm-specific state.【F:internal/ratelimiter/service.go†L140-L257】【F:internal/ratelimiter/service.go†L258-L343】
+* **Token bucket baseline:** When no pattern dominates, the limiter falls back to a classic token bucket, refilling tokens over time and keeping burst tolerance high.【F:internal/ratelimiter/service.go†L84-L139】【F:internal/ratelimiter/service.go†L288-L306】
+* **Leaky bucket smoothing:** Bursty traffic activates backlog tracking and drip-rate enforcement so replicas throttle uniformly based on the shared backlog state.【F:internal/ratelimiter/service.go†L258-L317】
+* **Sliding window fairness:** Sustained traffic switches to a sliding-window counter that guarantees a hard cap per interval and replicates window metadata across nodes.【F:internal/ratelimiter/service.go†L317-L343】
+* **Distributed synchronisation:** Each state transition is published as a `syncEvent`. Peers subscribe to the same subject and reconcile using version numbers to avoid stale writes.【F:internal/ratelimiter/service.go†L343-L413】
+* **Statistics table:** The service records per-key and per-source counters, last request timestamps, algorithm labels, and the hybrid metrics. This data powers the `/stats` and `/debug` endpoints and feeds into decision logs.【F:internal/ratelimiter/service.go†L18-L75】【F:internal/ratelimiter/service.go†L199-L213】【F:internal/ratelimiter/service.go†L418-L443】
+* **Structured logging:** Every decision emits JSON logs detailing the request, outcome, algorithm, and updated counters, aiding auditing and anomaly detection.【F:internal/ratelimiter/service.go†L444-L470】
 * **Why custom implementation?** Owning the bucket, stats, and sync logic keeps the learning surface clear for this sample application and avoids introducing heavier dependencies like Redis. It also enables deterministic unit tests and precise documentation of the algorithm.
 
 ## 5. Protobuf layer (`internal/pbcodec` and `proto/rate_limiter.proto`)
 
-* **Schema:** `proto/rate_limiter.proto` defines the `AllowRequest`/`AllowResponse` messages with metadata for key, source, and stats counters.【F:proto/rate_limiter.proto†L1-L93】
+* **Schema:** `proto/rate_limiter.proto` defines the `AllowRequest`/`AllowResponse` messages with metadata for key, source, stats counters, and the active algorithm plus strategy reason so clients can observe hybrid decisions.【F:proto/rate_limiter.proto†L1-L93】
 * **Codec:** `internal/pbcodec` provides a tiny protobuf encoder/decoder tailored to these messages. The unit tests confirm round-trip integrity and compatibility with the manually constructed frames.【F:internal/pbcodec/codec.go†L1-L318】【F:internal/pbcodec/codec_test.go†L1-L126】
 * **Why hand-written?** The repository intentionally demonstrates how protobuf wire types work without relying on `protoc`. This keeps the toolchain lightweight for readers and gives full control over encoded payloads.
 
@@ -65,6 +68,7 @@ Sample log transcripts live under `logs/` so operators can compare their runtime
 
 * **`docs/overview.md`:** A concise story with example requests and responses for quick orientation.【F:docs/overview.md†L1-L76】
 * **`docs/tooling.md`:** Install guides for Go, Docker, NATS CLI, jq, and more across multiple platforms, ensuring operators know the prerequisites.【F:docs/tooling.md†L1-L95】
+* **`docs/patterns/`:** Detailed pages for each rate-limiting strategy (token bucket, leaky bucket, sliding window) plus the hybrid controller decision logic.【F:docs/patterns/README.md†L1-L12】【F:docs/patterns/hybrid-controller.md†L1-L33】
 * **`test file`:** A step-by-step manual testing harness covering local runs, Docker Compose, Kubernetes, and cleanup workflows.【F:test file†L1-L155】
 * **`docs/product.md` (this guide):** The full architectural deep dive.
 
