@@ -145,6 +145,8 @@ make kube-smoke IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo
 ```
 This target provisions a temporary namespace, deploys the manifests, hits the REST API, and ensures cleanup on success or failure. The script now waits for both the NATS and rate-limiter deployments to become ready, retries the verification `curl` with a strict timeout, and automatically dumps pod logs if anything goes wrong so you immediately know why the run failed. Logs from a successful CI-style run are captured in [`logs/ci-smoke.log`](logs/ci-smoke.log).
 
+> **Note:** Running this automation requires Docker (for building/loading the image) and a working Kind installation. In restricted sandboxes without container privileges the target will fail; in that case run the manual Kubernetes flow above or rely on the CI pipeline.
+
 ## 6. Troubleshooting tips
 
 - Use `kubectl logs deployment/rate-limiter` to inspect the service when running in Kubernetes.
