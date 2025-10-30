@@ -1,4 +1,4 @@
-.PHONY: build run test docker-build compose-up compose-down compose-logs kube-apply kube-delete kube-smoke
+.PHONY: build run test docker-build compose-up compose-down compose-logs kube-apply kube-delete kube-smoke kind-up kind-down
 
 BINARY := ratelimiter
 IMAGE ?= rate-limiter:local
@@ -38,3 +38,9 @@ kube-delete:
 
 kube-smoke:
 	IMAGE=$(IMAGE) NAMESPACE=$(KUBE_NAMESPACE) hack/ci/k8s-smoke.sh
+
+kind-up:
+	hack/kind-up.sh
+
+kind-down:
+	kind delete cluster --name rate-limiter || true

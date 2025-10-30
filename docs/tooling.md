@@ -84,10 +84,13 @@ kind version
 make --version
 ```
 
-If you plan to run the Kubernetes smoke test locally, also verify that a Kind cluster can be created:
+If you plan to run the Kubernetes smoke test locally, also verify that a Kind cluster can be created using the hardened wrapper
+that allocates a dedicated Docker network (avoiding the default `172.18.0.0/16` bridge that can disrupt remote SSH sessions) and
+the repo's safe cluster configuration:
 
 ```bash
-kind create cluster --name validate --wait 60s
+KIND_CLUSTER_NAME=validate KIND_NETWORK_NAME=ratelimiter-validate \
+  KIND_NETWORK_SUBNET=10.243.0.0/16 hack/kind-up.sh --wait 60s
 kubectl get nodes
 kind delete cluster --name validate
 ```
@@ -97,3 +100,8 @@ Remember to log out and back in if you added your user to the Docker group on Li
 ## Docker networking considerations
 
 The Docker Compose stack allocates a dedicated bridge network called `ratelimiter_net` and defaults to the `172.31.255.0/28` subnet so it does not conflict with typical corporate address plans. Export `RATE_LIMITER_NETWORK` or `RATE_LIMITER_SUBNET` before running `make compose-up` if your host already uses that range or if you prefer to pin the stack to a different segment.
+
+Similarly, Kind creation is routed through `hack/kind-up.sh` (and the corresponding `make kind-up` target) to pre-create a Docker
+network with a configurable CIDR. This avoids the stock `kind` bridge that otherwise lands on `172.18.0.0/16` and has been known
+to disrupt connectivity on hosts whose uplinks also use a `172.18`-based range. Override `KIND_NETWORK_SUBNET` or
+`KIND_NETWORK_NAME` if the defaults collide with your environment.

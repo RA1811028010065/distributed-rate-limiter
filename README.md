@@ -119,11 +119,20 @@ make docker-build
 
 ### Deploying to Kubernetes
 
-First build and push an image that your cluster can access (or load it into a local cluster such as Kind). If you are using Kind and do not yet have a cluster running, create one first:
+First build and push an image that your cluster can access (or load it into a local cluster such as Kind). If you are using Kind and do not yet have a cluster running, create one first with the hardened wrapper that provisions an isolated Docker network and uses the repo's subnet-safe cluster configuration. This prevents Kind from creating the default `172.18.0.0/16` bridge that can temporarily hijack routes (and therefore SSH sessions) on remote machines:
 
 ```bash
-kind create cluster --name rate-limiter
+make kind-up
 ```
+
+The wrapper is a thin shim over:
+
+```bash
+KIND_EXPERIMENTAL_DOCKER_NETWORK=ratelimiter-kind \
+  hack/kind-up.sh --wait 120s
+```
+
+It creates (or reuses) the `ratelimiter-kind` Docker network on the `10.240.0.0/16` subnet, then invokes `kind create cluster --name rate-limiter --config deploy/kind/cluster.yaml` so both the container and Kubernetes-level subnets avoid conflicts with common datacentre ranges.
 
 Then build the image:
 

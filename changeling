@@ -1,0 +1,14 @@
+# Change Log ("Changeling")
+
+## Harden Kind networking to protect SSH sessions
+- Added `hack/kind-up.sh` and `make kind-up` so Kind clusters are created on an isolated Docker bridge (`ratelimiter-kind` by default) instead of the global `172.18.0.0/16` network that was severing SSH connections on remote hosts.
+- Introduced `deploy/kind/cluster.yaml` to pin pod and service CIDRs to `10.225.0.0/16` and `10.226.0.0/16`, keeping Kubernetes traffic off overlapping ranges.
+- Updated the CI workflow, manual guides, and tooling documentation to use the hardened creation flow and to explain how to override the network settings if needed.
+- Removed the deprecated `version` stanza from `deploy/docker-compose.yml` to silence CLI warnings during `make compose-up`.
+
+**Why**: Kind's default Docker network overlaps with many datacentre address plans. When it was created on hosts reached over a `172.18.0.0/16` uplink, the remote SSH session was dropped mid-creation. By forcing Kind onto an explicit, non-overlapping subnet and documenting the workflow everywhere, the cluster can be created safely both locally and in CI.
+
+## Enable NATS monitoring port for health checks
+- Exposed the monitoring endpoint in Docker Compose and Kubernetes so the health checks driving the stack and smoke tests stay green.
+
+**Why**: Without the monitoring port the health probes timed out, preventing Compose from stabilising and making smoke diagnostics noisy.

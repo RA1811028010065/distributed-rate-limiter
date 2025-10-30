@@ -90,8 +90,11 @@ This document outlines how to exercise the distributed rate limiter manually usi
 
 1. **Prepare a Kind cluster (if you don't already have one)**:
    ```bash
-   kind create cluster --name rate-limiter
+   make kind-up
    ```
+   The helper script automatically creates an isolated Docker network (`ratelimiter-kind` on `10.240.0.0/16`) before invoking
+   `kind create cluster --name rate-limiter --config deploy/kind/cluster.yaml`. This avoids the stock `kind` bridge that can
+   disrupt SSH sessions on hosts whose uplinks reside in the `172.18.0.0/16` space.
 2. **Build a local image** (Kind example shown):
    ```bash
    make docker-build IMAGE=rate-limiter:local

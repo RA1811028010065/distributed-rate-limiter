@@ -51,10 +51,20 @@ jobs:
         uses: azure/setup-kubectl@v3
         with:
           version: "latest"
+      - name: Prepare isolated Docker network for kind
+        run: |
+          set -euo pipefail
+          if docker network inspect ratelimiter-ci >/dev/null 2>&1; then
+            docker network rm ratelimiter-ci
+          fi
+          docker network create ratelimiter-ci --driver bridge --subnet 10.242.0.0/16
       - name: Create kind cluster
         uses: helm/kind-action@v1.8.0
+        env:
+          KIND_EXPERIMENTAL_DOCKER_NETWORK: ratelimiter-ci
         with:
           cluster_name: ratelimiter-ci
+          config: deploy/kind/cluster.yaml
       - name: Build container image
         run: docker build -t ratelimiter:ci .
       - name: Load image into kind
