@@ -19,7 +19,8 @@ docker-build:
 	docker build -t $(IMAGE) .
 
 compose-up:
-        cd deploy && $(DOCKER_COMPOSE) up --build
+        cd deploy && $(DOCKER_COMPOSE) build
+        cd deploy && $(DOCKER_COMPOSE) up
 
 compose-down:
         cd deploy && $(DOCKER_COMPOSE) down

@@ -1,6 +1,6 @@
 # Distributed Rate Limiter
 
-This project showcases a self-contained distributed rate-limiter implemented in Go. It exposes both REST and gRPC-style endpoints, synchronises state via NATS or an in-memory bus, and is fully containerised for deployment on Kubernetes.
+This project showcases a self-contained distributed rate-limiter implemented in Go. It exposes both REST and gRPC-style endpoints, synchronises state via NATS or an in-memory bus, and is fully containerised for deployment on Kubernetes. For a concise overview with sample interactions, see [`docs/overview.md`](docs/overview.md).
 
 ## Features
 
@@ -41,10 +41,45 @@ The repository ships with a GitHub Actions workflow located at [`.github/workflo
 ### Prerequisites
 
 - Go 1.21+
-- Docker (for container builds)
-- kubectl & Kubernetes cluster (for deployment)
+- Docker Engine **with either the Compose plugin (`docker compose`) or the standalone `docker-compose` binary**
+- kubectl & access to a Kubernetes cluster (Kind works well for local tests)
+- `jq` for formatting JSON output (optional)
 
 For platform-specific tooling installation commands refer to [`docs/tooling.md`](docs/tooling.md).
+
+#### Ubuntu 24.04 quickstart
+
+From a pristine Ubuntu 24.04 install you can bootstrap everything with:
+
+```bash
+sudo apt update
+sudo apt install -y curl git jq make docker-compose-plugin
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker "$USER"
+curl -LO https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+rm go1.21.5.linux-amd64.tar.gz
+curl -Lo kubectl https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
+chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+curl -Lo kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+chmod +x kind && sudo mv kind /usr/local/bin/
+newgrp docker  # refresh group membership without logging out
+```
+
+The `docker-compose-plugin` package enables the `docker compose` sub-command. If you prefer the standalone binary you can
+install it afterwards via `sudo apt install docker-compose`; the Makefile targets detect either flavour automatically.
+
+Verify the tooling:
+
+```bash
+go version
+docker version
+docker compose version || docker-compose --version
+kubectl version --client
+kind version
+```
+
+With tooling ready, clone the repository and follow the flows in [the manual testing guide](test%20file) to exercise the service locally, via Docker Compose, and on Kubernetes.
 
 ### Running locally
 
@@ -71,9 +106,7 @@ The gRPC-style endpoint is available on `localhost:8081` at the method path `/ra
 make compose-up
 ```
 
-This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance). Stop the stack with `make compose-down`.
-
-> **Note:** The Makefile target auto-detects whether the Docker Compose plugin (`docker compose`) or the standalone `docker-compose` binary is installed and uses whichever is available. Ensure one of them is installed before running the target.
+This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance). The target now runs an explicit `compose build` step before `compose up`, ensuring compatibility with both the Docker Compose plugin and the legacy `docker-compose` binary. Stop the stack with `make compose-down`.
 
 ### Building a container
 

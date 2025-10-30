@@ -18,7 +18,7 @@ This guide enumerates the software required to build, test, and operate the dist
 ```bash
 # Ubuntu / Debian
 sudo apt update
-sudo apt install -y golang jq make
+sudo apt install -y golang jq make docker-compose-plugin
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker "$USER"
 curl -Lo ./kubectl https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
@@ -32,6 +32,9 @@ curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
 chmod +x kind
 sudo mv kind /usr/local/bin/
 ```
+
+The `docker-compose-plugin` package installed above provides the `docker compose` sub-command. If you prefer the standalone
+binary, install it via `sudo apt install docker-compose` and the Makefile targets will detect it automatically.
 
 Log out and back in (or `newgrp docker`) so Docker permissions take effect.
 
