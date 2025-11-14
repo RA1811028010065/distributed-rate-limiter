@@ -101,6 +101,8 @@ Remember to log out and back in if you added your user to the Docker group on Li
 
 The Docker Compose stack allocates a dedicated bridge network called `ratelimiter_net` and defaults to the `172.31.255.0/28` subnet so it does not conflict with typical corporate address plans. Export `RATE_LIMITER_NETWORK` or `RATE_LIMITER_SUBNET` before running `make compose-up` if your host already uses that range or if you prefer to pin the stack to a different segment.
 
+`make compose-up` now finishes by calling `hack/wait-compose.sh`, a portable helper that inspects the Docker Engine API directly instead of the experimental `docker compose --wait` flag. The helper prints container health as it becomes available, then exits once the stack is stable.
+
 Similarly, Kind creation is routed through `hack/kind-up.sh` (and the corresponding `make kind-up` target) to pre-create a Docker
 network with a configurable CIDR. This avoids the stock `kind` bridge that otherwise lands on `172.18.0.0/16` and has been known
 to disrupt connectivity on hosts whose uplinks also use a `172.18`-based range. Override `KIND_NETWORK_SUBNET` or

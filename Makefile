@@ -4,7 +4,7 @@ BINARY := ratelimiter
 IMAGE ?= rate-limiter:local
 KUBE_NAMESPACE ?= rate-limiter
 DOCKER_COMPOSE ?= $(shell if command -v docker-compose >/dev/null 2>&1; then echo docker-compose; else echo "docker compose"; fi)
-COMPOSE_WAIT_FLAGS ?= $(if $(findstring docker compose,$(DOCKER_COMPOSE)),--wait --wait-timeout 120,)
+COMPOSE_PROJECT ?= deploy
 
 build:
 	mkdir -p bin
@@ -20,7 +20,11 @@ docker-build:
 	docker build -t $(IMAGE) .
 
 compose-up:
-	cd deploy && COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 $(DOCKER_COMPOSE) up --detach --build --quiet-pull --remove-orphans $(COMPOSE_WAIT_FLAGS)
+	cd deploy && COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 $(DOCKER_COMPOSE) up --detach --build --quiet-pull --remove-orphans
+	COMPOSE_PROJECT=$(COMPOSE_PROJECT) \
+	COMPOSE_PROJECT_DIR=deploy \
+	DOCKER_COMPOSE="$(DOCKER_COMPOSE)" \
+	./hack/wait-compose.sh
 
 compose-down:
 	cd deploy && $(DOCKER_COMPOSE) down

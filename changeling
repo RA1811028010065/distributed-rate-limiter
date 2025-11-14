@@ -12,3 +12,9 @@
 - Exposed the monitoring endpoint in Docker Compose and Kubernetes so the health checks driving the stack and smoke tests stay green.
 
 **Why**: Without the monitoring port the health probes timed out, preventing Compose from stabilising and making smoke diagnostics noisy.
+
+## Replace Compose `--wait` usage with portable health polling
+- Added `hack/wait-compose.sh`, a tiny helper that inspects Compose-managed containers and streams their health state until everything is marked healthy.
+- Updated the Makefile, README, and manual test guide to rely on the helper instead of the experimental `docker compose --wait` flag that was causing `unsupported shim version (3)` errors and SSH disconnects on certain hosts.
+
+**Why**: Some remote hosts ship a Docker Engine build where the Compose `--wait` flag flips on a shim mode that their container runtime cannot satisfy, terminating `docker compose up` (and therefore `make compose-up`) and leaving the SSH session in a broken state. Polling health status via the Docker API avoids those incompatibilities while still ensuring the stack only reports success once services are ready.
