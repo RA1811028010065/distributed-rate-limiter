@@ -20,11 +20,13 @@ docker-build:
 	docker build -t $(IMAGE) .
 
 compose-up:
-	cd deploy && COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 $(DOCKER_COMPOSE) up --detach --build --quiet-pull --remove-orphans
-	COMPOSE_PROJECT=$(COMPOSE_PROJECT) \
-	COMPOSE_PROJECT_DIR=deploy \
-	DOCKER_COMPOSE="$(DOCKER_COMPOSE)" \
-	./hack/wait-compose.sh
+DOCKER_COMPOSE="$(DOCKER_COMPOSE)" \
+COMPOSE_PROJECT_DIR=deploy \
+./hack/compose-up.sh
+COMPOSE_PROJECT=$(COMPOSE_PROJECT) \
+COMPOSE_PROJECT_DIR=deploy \
+DOCKER_COMPOSE="$(DOCKER_COMPOSE)" \
+./hack/wait-compose.sh
 
 compose-down:
 	cd deploy && $(DOCKER_COMPOSE) down

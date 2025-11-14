@@ -56,7 +56,7 @@ See `cmd/ratelimiter/main.go` for the full setup logic.【F:cmd/ratelimiter/main
 
 ## 7. Deployment assets (`deploy/`)
 
-* **Docker Compose (`deploy/docker-compose.yml`):** Spins up a NATS container and the rate limiter, mirroring the production topology on a single machine. The Makefile target performs a build step first so both the Compose plugin and legacy binary work on Ubuntu 24.04.【F:deploy/docker-compose.yml†L1-L88】【F:Makefile†L1-L126】
+* **Docker Compose (`deploy/docker-compose.yml`):** Spins up a NATS container and the rate limiter, mirroring the production topology on a single machine. The Makefile target now shells out to `hack/compose-up.sh`, which retries without BuildKit if Docker reports the `unsupported shim version (3)` error seen on older containerd builds so both the Compose plugin and legacy binary work on Ubuntu 24.04.【F:deploy/docker-compose.yml†L1-L88】【F:Makefile†L1-L126】【F:hack/compose-up.sh†L1-L38】
 * **Kubernetes manifests (`deploy/kubernetes/*`):** Provide Deployments and Services for both NATS and the application. They include readiness probes, resource requests, and labels consumed by the smoke harness.【F:deploy/kubernetes/nats.yaml†L1-L102】【F:deploy/kubernetes/rate-limiter.yaml†L1-L162】
 * **Why Kubernetes + Kind?** Kubernetes is the target deployment platform, and Kind (Kubernetes in Docker) offers a reproducible test environment that integrates with CI runners. This allows end-to-end verification without requiring cloud infrastructure.
 

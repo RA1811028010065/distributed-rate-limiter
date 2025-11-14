@@ -55,7 +55,7 @@ This document outlines how to exercise the distributed rate limiter manually usi
    ```bash
    make compose-up
    ```
-   The target runs in detached mode so your SSH session remains interactive. Instead of relying on the experimental Compose `--wait` flag, the Makefile now invokes `hack/wait-compose.sh` which polls the declared container health checks every few seconds and mirrors status updates back to your shell. Set the `RATE_LIMITER_NETWORK` or `RATE_LIMITER_SUBNET` environment variables (for example, `RATE_LIMITER_SUBNET=10.201.0.0/28 make compose-up`) if Docker's default networking has previously interrupted your SSH session—the stack now defaults to a dedicated `ratelimiter_net` bridge on `172.31.255.0/28` to avoid such clashes.
+   The target runs in detached mode so your SSH session remains interactive. `hack/compose-up.sh` automatically retries without BuildKit if Docker surfaces the `unsupported shim version (3)` error that some older containerd builds produce; export `COMPOSE_DISABLE_BUILDKIT=1` if you always want the fallback path. After the containers start, `hack/wait-compose.sh` polls the declared health checks every few seconds and mirrors status updates back to your shell. Set the `RATE_LIMITER_NETWORK` or `RATE_LIMITER_SUBNET` environment variables (for example, `RATE_LIMITER_SUBNET=10.201.0.0/28 make compose-up`) if Docker's default networking has previously interrupted your SSH session—the stack now defaults to a dedicated `ratelimiter_net` bridge on `172.31.255.0/28` to avoid such clashes.
 2. **Watch optional logs** – if you want to monitor the services while they continue running, follow their output in another terminal:
    ```bash
    make compose-logs

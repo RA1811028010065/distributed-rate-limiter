@@ -18,3 +18,9 @@
 - Updated the Makefile, README, and manual test guide to rely on the helper instead of the experimental `docker compose --wait` flag that was causing `unsupported shim version (3)` errors and SSH disconnects on certain hosts.
 
 **Why**: Some remote hosts ship a Docker Engine build where the Compose `--wait` flag flips on a shim mode that their container runtime cannot satisfy, terminating `docker compose up` (and therefore `make compose-up`) and leaving the SSH session in a broken state. Polling health status via the Docker API avoids those incompatibilities while still ensuring the stack only reports success once services are ready.
+
+## Auto-retry Compose without BuildKit on shim-incompatible hosts
+- Added `hack/compose-up.sh`, a wrapper that keeps the fast BuildKit path for modern Docker installations but detects the `unsupported shim version (3)` error and automatically reruns the stack with the classic builder.
+- Updated the Makefile and documentation (README, tooling guide, manual test plan, and product doc) to route `make compose-up` through the wrapper and document the `COMPOSE_DISABLE_BUILDKIT=1` escape hatch for deterministic environments.
+
+**Why**: Some containerd distributions surface the shim v3 error as soon as BuildKit launches, preventing the Compose stack from ever starting. Automatically falling back to the legacy builder keeps the workflow usable on those hosts without penalising developers on newer engines.
