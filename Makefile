@@ -1,7 +1,5 @@
-SHELL := /usr/bin/env bash
-
 .PHONY: build run test docker-build compose-up compose-down compose-logs kube-apply kube-delete kube-smoke kind-up kind-down \
-        kind-load grpc-smoke helm-install helm-uninstall
+	grpc-smoke helm-install helm-uninstall
 
 BINARY := ratelimiter
 IMAGE ?= rate-limiter:local
@@ -42,7 +40,13 @@ compose-logs:
 	cd deploy && $(DOCKER_COMPOSE) logs -f
 
 grpc-smoke:
-	./hack/grpc-smoke.sh
+	go run ./cmd/grpcclient \
+	-addr $(GRPC_CLIENT_ADDR) \
+	-key grpc-smoke \
+	-tokens 1 \
+	-max-tokens 5 \
+	-refill-rate 5 \
+	-source cli
 
 kube-apply:
 	kubectl apply -f deploy/kubernetes/nats.yaml
