@@ -1,14 +1,11 @@
-SHELL := /usr/bin/env bash
-
 .PHONY: build run test docker-build compose-up compose-down compose-logs kube-apply kube-delete kube-smoke kind-up kind-down \
-        kind-load grpc-smoke helm-install helm-uninstall
+	grpc-smoke helm-install helm-uninstall
 
 BINARY := ratelimiter
 IMAGE ?= rate-limiter:local
 KUBE_NAMESPACE ?= rate-limiter
 HELM_RELEASE ?= rate-limiter
 HELM_CHART ?= deploy/helm/rate-limiter
-HELM_EXTRA_ARGS ?=
 GRPC_CLIENT_ADDR ?= http://localhost:8081
 DOCKER_COMPOSE ?= $(shell if command -v docker-compose >/dev/null 2>&1; then echo docker-compose; else echo "docker compose"; fi)
 COMPOSE_PROJECT ?= deploy
@@ -43,7 +40,13 @@ compose-logs:
 	cd deploy && $(DOCKER_COMPOSE) logs -f
 
 grpc-smoke:
-	./hack/grpc-smoke.sh
+	go run ./cmd/grpcclient \
+	-addr $(GRPC_CLIENT_ADDR) \
+	-key grpc-smoke \
+	-tokens 1 \
+	-max-tokens 5 \
+	-refill-rate 5 \
+	-source cli
 
 kube-apply:
 	kubectl apply -f deploy/kubernetes/nats.yaml
@@ -57,12 +60,17 @@ kube-smoke:
 	IMAGE=$(IMAGE) NAMESPACE=$(KUBE_NAMESPACE) hack/ci/k8s-smoke.sh
 
 helm-install:
-	IMAGE=$(IMAGE) \
-	KUBE_NAMESPACE=$(KUBE_NAMESPACE) \
-	HELM_RELEASE=$(HELM_RELEASE) \
-	HELM_CHART=$(HELM_CHART) \
-	HELM_EXTRA_ARGS="$(HELM_EXTRA_ARGS)" \
-        ./hack/helm-install.sh
+	@set -euo pipefail; \
+	IMAGE_REPO="$(IMAGE)"; \
+	IMAGE_TAG="latest"; \
+        if [[ "$$IMAGE_REPO" == *":"* ]]; then \
+                IMAGE_TAG="$${IMAGE_REPO##*:}"; \
+                IMAGE_REPO="$${IMAGE_REPO%:*}"; \
+        fi; \
+	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
+	--namespace $(KUBE_NAMESPACE) --create-namespace \
+	--set image.repository=$$IMAGE_REPO \
+	--set image.tag=$$IMAGE_TAG
 
 helm-uninstall:
 	helm uninstall $(HELM_RELEASE) --namespace $(KUBE_NAMESPACE) || true
