@@ -115,13 +115,97 @@ The utility composes a protobuf payload with `internal/pbcodec`, wraps it in the
 
 ### Running with Docker Compose
 
-```
-make compose-up
-```
+Every change set now comes with a verbatim CLI transcript so you can see exactly which commands passed locally before any pull
+request was opened. The latest log lives at [`docs/command-log.md`](docs/command-log.md) and is updated alongside the code whene
+ver a new workflow (tests, smoke helpers, etc.) is exercised. Each entry documents the purpose of the command, the invocation, a
+nd the raw stdout/stderr for easy reproduction.
 
-This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance) in detached mode, so your shell remains usable during the run. The Makefile now shells out to `hack/compose-up.sh`, a wrapper that prefers BuildKit for faster rebuilds but automatically retries without it if Docker reports the `unsupported shim version (3)` error seen on older containerd builds. Set `COMPOSE_DISABLE_BUILDKIT=1 make compose-up` to permanently pin the stack to the classic builder in restrictive environments. Once the containers start, `hack/wait-compose.sh` polls the health checks defined in `deploy/docker-compose.yml`, streaming updates until everything is healthy. Tail the stack output any time with `make compose-logs` and stop it with `make compose-down`.
+With tooling ready, clone the repository and follow the flows in [the manual testing guide](test%20file) to exercise the service locally, via Docker Compose, and on Kubernetes.
 
-To prevent Docker's default bridge network from hijacking existing routes (which could momentarily sever SSH connectivity on remote hosts), the Compose file now provisions a dedicated bridge network named `ratelimiter_net` with the default subnet `172.31.255.0/28`. Override `RATE_LIMITER_NETWORK` and/or `RATE_LIMITER_SUBNET` when invoking `make compose-up` if that range clashes with your infrastructure.
+### Running locally (start → test → cleanup)
+
+1. **Run tests**
+   ```bash
+   go test -v ./...
+   ```
+2. **Start the service** (only necessary if you want a long-lived instance):
+   ```bash
+   # In-memory bus by default – set NATS_URL to talk to a real broker
+   go run ./cmd/ratelimiter
+   ```
+   Runtime decisions land in `logs/runtime.log`, so you can keep another terminal tailing it while you run traffic.
+3. **Positive REST request** – the first hit should be allowed:
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"demo","tokens":1,"max_tokens":10,"refill_rate":5}' | jq
+   ```
+4. **Negative REST request** – intentionally exceed the allowance:
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"demo","tokens":25,"max_tokens":10,"refill_rate":5}' | jq
+   ```
+   Expect `allowed: false` once the bucket depletes.
+5. **Inspect statistics and bucket state**
+   ```bash
+   curl -sS http://localhost:8080/api/v1/stats | jq
+   curl -sS http://localhost:8080/api/v1/debug | jq
+   ```
+   Both endpoints update in real time and reflect the per-key counters plus the active hybrid strategy.
+6. **Exercise the gRPC/protobuf path**
+   ```bash
+   make grpc-smoke
+   ```
+   The smoke helper now boots a temporary rate-limiter instance bound to `HTTP :38080` / `gRPC :38081`, waits for it to accept traffic, runs the Go client against `http://127.0.0.1:38081/ratelimiter.v1.RateLimiter/Allow`, prints the decoded protobuf response, and tears everything down automatically. You can still target an already-running service by overriding `GRPC_CLIENT_ADDR` and skipping the ephemeral server:
+   ```bash
+   GRPC_CLIENT_ADDR=http://localhost:8081 \
+   GRPC_SMOKE_SKIP_SERVER=1 \
+   make grpc-smoke
+   ```
+   Additional knobs include:
+   - `GRPC_SMOKE_HTTP_ADDR` / `GRPC_SMOKE_GRPC_ADDR` – customise the temporary server's bind addresses (defaults `:38080` / `:38081`).
+   - `GRPC_SMOKE_CLIENT_ADDR` – URL the helper should hit when it spawns its own server (defaults `http://127.0.0.1:38081`).
+   - `GRPC_SMOKE_KEY`, `GRPC_SMOKE_TOKENS`, `GRPC_SMOKE_MAX_TOKENS`, `GRPC_SMOKE_REFILL_RATE`, `GRPC_SMOKE_SOURCE` – tweak the payload without editing the code.
+7. **Clean up** – stop the long-running Go process with `Ctrl+C` when you no longer need it; the smoke helper already cleans up the temporary instance for you.
+
+The REST API stays on `http://localhost:8080` by default with `/healthz`, `/api/v1/allow`, `/api/v1/stats`, and `/api/v1/debug` endpoints, and the gRPC-style method lives at `/ratelimiter.v1.RateLimiter/Allow` over port `8081` when you run the full service manually.
+
+### Running with Docker Compose (start → test → cleanup)
+
+1. **Start the stack** – rate-limiter + NATS in detached mode:
+   ```bash
+   make compose-up
+   ```
+   The wrapper under `hack/compose-up.sh` prefers BuildKit for faster rebuilds, automatically retries without it if Docker reports the `unsupported shim version (3)` issue, and provisions a dedicated `ratelimiter_net` bridge on `172.31.255.0/28` so your SSH routes stay intact. Override `COMPOSE_DISABLE_BUILDKIT=1` or `RATE_LIMITER_NETWORK=/RATE_LIMITER_SUBNET` as needed.
+2. **Watch logs (optional)**
+   ```bash
+   make compose-logs
+   ```
+3. **Positive REST case**
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"compose","tokens":1,"max_tokens":5,"refill_rate":2}' | jq
+   ```
+4. **Negative REST case** – loop until the allowance is exhausted:
+   ```bash
+   for i in $(seq 1 6); do
+     curl -sS -X POST http://localhost:8080/api/v1/allow \
+       -H "Content-Type: application/json" \
+       -d '{"key":"compose","tokens":1,"max_tokens":5,"refill_rate":1}' | jq
+   done
+   ```
+5. **Inspect stats or container logs**
+   ```bash
+   curl -sS http://localhost:8080/api/v1/stats | jq
+   (docker compose logs rate-limiter 2>/dev/null || docker-compose logs rate-limiter) | tail -n 20
+   ```
+6. **Clean up**
+   ```bash
+   make compose-down
+   ```
+   `hack/wait-compose.sh` automatically reports health status while the stack starts, and the teardown target removes containers, the bridge network, and the shared volume so repeated runs stay deterministic.
 
 ### Building a container
 
