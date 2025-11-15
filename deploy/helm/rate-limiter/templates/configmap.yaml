@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "rate-limiter.fullname" . }}-config
+  labels:
+    {{- include "rate-limiter.labels" . | nindent 4 }}
+data:
+  HTTP_ADDR: {{ .Values.config.httpAddr | quote }}
+  GRPC_ADDR: {{ .Values.config.grpcAddr | quote }}
+  {{- if .Values.nats.enabled }}
+  NATS_URL: {{ printf "nats://%s:%d" (include "rate-limiter.natsName" .) .Values.nats.service.port | quote }}
+  {{- else }}
+  NATS_URL: ""
+  {{- end }}
