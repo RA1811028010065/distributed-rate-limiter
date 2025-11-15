@@ -46,10 +46,11 @@ This document outlines how to exercise the distributed rate limiter manually usi
 7. **Exercise the gRPC endpoint** – send a protobuf-framed request using the bundled helper (no external tooling required):
    ```bash
    make grpc-smoke
-   # or point the helper at an existing instance
-   GRPC_CLIENT_ADDR=http://localhost:8081 GRPC_SMOKE_SKIP_SERVER=1 make grpc-smoke
+   # or tweak the payload
+   go run ./cmd/grpcclient -addr http://localhost:8081 \
+     -key grpc-local -tokens 1 -max-tokens 5 -refill-rate 2 -source demo
    ```
-   The helper now starts a temporary rate-limiter bound to `HTTP :38080` / `gRPC :38081`, waits for it to come up, fires the request with `cmd/grpcclient`, prints the decoded response, and tears everything down automatically. To customise the payload or bind addresses, set `GRPC_SMOKE_KEY`, `GRPC_SMOKE_TOKENS`, `GRPC_SMOKE_MAX_TOKENS`, `GRPC_SMOKE_REFILL_RATE`, `GRPC_SMOKE_SOURCE`, `GRPC_SMOKE_HTTP_ADDR`, or `GRPC_SMOKE_GRPC_ADDR` before invoking the target.
+   The program uses `internal/pbcodec` to encode/decode the payload so you verify the transport in the same way CI does.
 7. **Review structured logs** – by default the service mirrors all decisions (including the chosen algorithm and reason) to `logs/runtime.log`.
    ```bash
    tail -n 20 logs/runtime.log
@@ -159,7 +160,6 @@ The Helm chart in `deploy/helm/rate-limiter` mirrors the manifests above but wra
    ```bash
    IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo HELM_RELEASE=ratelimiter-demo make helm-install
    ```
-   Load the image into Kind beforehand (`make kind-load IMAGE=rate-limiter:local KIND_CLUSTER=rate-limiter`) if the cluster cannot reach your registry directly.
 2. **Run the built-in test hook** (optional confidence check)
    ```bash
    helm test ratelimiter-demo -n ratelimiter-demo
