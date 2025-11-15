@@ -10,6 +10,7 @@ This guide enumerates the software required to build, test, and operate the dist
 | Container builds & Compose stack | [Docker Engine](https://docs.docker.com/engine/install/) | The Compose plugin (`docker compose`) ships with recent Docker Desktop / Engine releases. |
 | Kubernetes deployment | [kubectl](https://kubernetes.io/docs/tasks/tools/) | Required for applying manifests and inspecting cluster state. |
 | Local Kubernetes cluster | [Kind](https://kind.sigs.k8s.io/) | Used by the CI pipeline and the manual smoke tests. |
+| Helm chart installs | [Helm](https://helm.sh/docs/intro/install/) | Needed for the optional chart under `deploy/helm/`. |
 | Scripting | GNU Make | Preinstalled on macOS and most Linux distributions; on Windows install via Chocolatey or Git for Windows. |
 | JSON formatting | [`jq`](https://stedolan.github.io/jq/download/) | Optional but recommended for inspecting REST responses. |
 
@@ -31,6 +32,7 @@ rm go${GO_VERSION}.linux-amd64.tar.gz
 curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
 chmod +x kind
 sudo mv kind /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 ```
 
 The `docker-compose-plugin` package installed above provides the `docker compose` sub-command. If you prefer the standalone
@@ -46,6 +48,7 @@ Log out and back in (or `newgrp docker`) so Docker permissions take effect.
 
 # Core tooling
 brew install go jq kind kubernetes-cli
+brew install helm
 
 # Docker Desktop (includes docker compose)
 brew install --cask docker
@@ -68,6 +71,7 @@ winget install -e --id Kubernetes.kubectl
 winget install -e --id Kubernetes.kind
 winget install -e --id jqlang.jq
 winget install -e --id GnuWin32.Make
+winget install -e --id Helm.Helm
 ```
 
 Launch Docker Desktop once so it finalises the configuration. The Make binary installs under `C:\Program Files (x86)\GnuWin32\bin`; add it to your `PATH`.
@@ -81,6 +85,7 @@ go version
 docker compose version
 kubectl version --client
 kind version
+helm version --short
 make --version
 ```
 

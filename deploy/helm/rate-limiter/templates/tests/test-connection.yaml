@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "rate-limiter.fullname" . }}-test
+  labels:
+    {{- include "rate-limiter.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: curl
+      image: curlimages/curl:8.7.1
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -euo pipefail
+          curl -fsS -X POST http://{{ include "rate-limiter.fullname" . }}:{{ .Values.service.httpPort }}/api/v1/allow \
+            -H 'Content-Type: application/json' \
+            -d '{"key":"helm-test","tokens":1,"max_tokens":5,"refill_rate":5}'
