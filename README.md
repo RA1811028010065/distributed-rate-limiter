@@ -10,7 +10,7 @@ This project showcases a self-contained distributed rate-limiter implemented in 
 - **REST API** for simple integration and observability endpoints, including live statistics and health checks.
 - **Structured decision logging** that fans out to stdout and an on-disk log file for auditability.
 - **NATS integration** implemented directly over the NATS protocol with an in-memory substitute for local development.
-- **Docker & Kubernetes manifests** for containerised deployments.
+- **Docker, Helm & Kubernetes manifests** for containerised deployments.
 - **Automated tests** covering protobuf codecs, hybrid strategy switching, and rate-limiter synchronisation semantics.【F:internal/ratelimiter/service_test.go†L9-L186】
 - **GitHub Actions pipeline** that builds, tests, deploys to a Kind cluster, and runs a REST smoke test.
 
@@ -101,6 +101,20 @@ The REST API defaults to `http://localhost:8080`:
 
 The gRPC-style endpoint is available on `localhost:8081` at the method path `/ratelimiter.v1.RateLimiter/Allow` and expects protobuf framed payloads as described in `proto/rate_limiter.proto`.
 
+To exercise the protobuf/gRPC stack without a third-party client install the bundled helper:
+
+```bash
+make grpc-smoke          # defaults to http://localhost:8081
+
+# or customise the payload
+go run ./cmd/grpcclient -addr http://localhost:8081 \
+  -key demo -tokens 1 -max-tokens 5 -refill-rate 5 -source cli
+```
+
+> **Important:** Start the rate-limiter service first (for example via `go run ./cmd/ratelimiter` or `make compose-up`) so the helper has an endpoint listening on port 8081.
+
+The utility composes a protobuf payload with `internal/pbcodec`, wraps it in the gRPC wire framing that `pkg/simplegrpc` expects, and prints the decoded response so you can verify both codecs end-to-end without needing `grpcurl`.
+
 ### Running with Docker Compose
 
 ```
@@ -140,6 +154,14 @@ Then build the image:
 make docker-build IMAGE=ghcr.io/your-user/rate-limiter:latest
 ```
 
+When targeting the bundled Kind cluster (or any other local Kind instance) load the freshly built image into the nodes before applying manifests so Kubernetes does not try to pull it from a public registry:
+
+```bash
+make kind-load IMAGE=rate-limiter:local KIND_CLUSTER=rate-limiter
+```
+
+If you are publishing the image to a remote registry, reuse that fully qualified reference when calling `make kind-load` or skip the load step entirely if your cluster can reach the registry directly.
+
 Apply the manifests under `deploy/kubernetes` (update the container image reference in `rate-limiter.yaml` to match your registry):
 
 ```bash
@@ -173,6 +195,22 @@ make kube-smoke IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo
 ```
 
 The deployment exposes port `8080` for REST and `8081` for the gRPC endpoint. Update the `ConfigMap` inside the manifest to customise limits or environment variables.
+
+### Deploying with Helm
+
+If you prefer Helm to manage releases, the chart in `deploy/helm/rate-limiter` packages the ConfigMap, Deployment, Service, optional NATS dependency, and a smoke-test pod. The defaults mirror the raw manifests above, so you only need to override the container image and namespace:
+
+```bash
+IMAGE=ghcr.io/your-user/rate-limiter:latest make helm-install KUBE_NAMESPACE=ratelimiter-demo HELM_RELEASE=ratelimiter-demo
+
+# verify and remove when finished
+helm test ratelimiter-demo -n ratelimiter-demo
+make helm-uninstall KUBE_NAMESPACE=ratelimiter-demo HELM_RELEASE=ratelimiter-demo
+```
+
+For Kind or other air-gapped clusters remember to `make kind-load IMAGE=rate-limiter:local` (or whatever tag you supplied to `IMAGE=`) before installing so Helm's Deployment can start without `ErrImagePull`.
+
+Set `nats.enabled=false` if your cluster already runs a shared NATS instance and pass additional env pairs through `values.yaml` or `--set-json env='[{"name":"LOG_PATH","value":"/data/runtime.log"}]'` to tweak runtime behaviour.
 
 ## Configuration
 
