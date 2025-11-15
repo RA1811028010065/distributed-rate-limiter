@@ -10,7 +10,7 @@ This project showcases a self-contained distributed rate-limiter implemented in 
 - **REST API** for simple integration and observability endpoints, including live statistics and health checks.
 - **Structured decision logging** that fans out to stdout and an on-disk log file for auditability.
 - **NATS integration** implemented directly over the NATS protocol with an in-memory substitute for local development.
-- **Docker & Kubernetes manifests** for containerised deployments.
+- **Docker, Helm & Kubernetes manifests** for containerised deployments.
 - **Automated tests** covering protobuf codecs, hybrid strategy switching, and rate-limiter synchronisation semantics.【F:internal/ratelimiter/service_test.go†L9-L186】
 - **GitHub Actions pipeline** that builds, tests, deploys to a Kind cluster, and runs a REST smoke test.
 
@@ -82,34 +82,90 @@ kind version
 
 With tooling ready, clone the repository and follow the flows in [the manual testing guide](test%20file) to exercise the service locally, via Docker Compose, and on Kubernetes.
 
-### Running locally
+### Running locally (start → test → cleanup)
 
-```bash
-# Run automated tests
-go test -v ./...
+1. **Run tests**
+   ```bash
+   go test -v ./...
+   ```
+2. **Start the service** (only necessary if you want a long-lived instance):
+   ```bash
+   # In-memory bus by default – set NATS_URL to talk to a real broker
+   go run ./cmd/ratelimiter
+   ```
+   Runtime decisions land in `logs/runtime.log`, so you can keep another terminal tailing it while you run traffic.
+3. **Positive REST request** – the first hit should be allowed:
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"demo","tokens":1,"max_tokens":10,"refill_rate":5}' | jq
+   ```
+4. **Negative REST request** – intentionally exceed the allowance:
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"demo","tokens":25,"max_tokens":10,"refill_rate":5}' | jq
+   ```
+   Expect `allowed: false` once the bucket depletes.
+5. **Inspect statistics and bucket state**
+   ```bash
+   curl -sS http://localhost:8080/api/v1/stats | jq
+   curl -sS http://localhost:8080/api/v1/debug | jq
+   ```
+   Both endpoints update in real time and reflect the per-key counters plus the active hybrid strategy.
+6. **Exercise the gRPC/protobuf path**
+   ```bash
+   make grpc-smoke
+   ```
+   The smoke helper now boots a temporary rate-limiter instance bound to `HTTP :38080` / `gRPC :38081`, waits for it to accept traffic, runs the Go client against `http://127.0.0.1:38081/ratelimiter.v1.RateLimiter/Allow`, prints the decoded protobuf response, and tears everything down automatically. You can still target an already-running service by overriding `GRPC_CLIENT_ADDR` and skipping the ephemeral server:
+   ```bash
+   GRPC_CLIENT_ADDR=http://localhost:8081 \
+   GRPC_SMOKE_SKIP_SERVER=1 \
+   make grpc-smoke
+   ```
+   Additional knobs include:
+   - `GRPC_SMOKE_HTTP_ADDR` / `GRPC_SMOKE_GRPC_ADDR` – customise the temporary server's bind addresses (defaults `:38080` / `:38081`).
+   - `GRPC_SMOKE_CLIENT_ADDR` – URL the helper should hit when it spawns its own server (defaults `http://127.0.0.1:38081`).
+   - `GRPC_SMOKE_KEY`, `GRPC_SMOKE_TOKENS`, `GRPC_SMOKE_MAX_TOKENS`, `GRPC_SMOKE_REFILL_RATE`, `GRPC_SMOKE_SOURCE` – tweak the payload without editing the code.
+7. **Clean up** – stop the long-running Go process with `Ctrl+C` when you no longer need it; the smoke helper already cleans up the temporary instance for you.
 
-# Start the service with the in-memory event bus
-go run ./cmd/ratelimiter
-```
+The REST API stays on `http://localhost:8080` by default with `/healthz`, `/api/v1/allow`, `/api/v1/stats`, and `/api/v1/debug` endpoints, and the gRPC-style method lives at `/ratelimiter.v1.RateLimiter/Allow` over port `8081` when you run the full service manually.
 
-The REST API defaults to `http://localhost:8080`:
+### Running with Docker Compose (start → test → cleanup)
 
-- `POST /api/v1/allow` – body: `{ "key": "user-1", "tokens": 1, "max_tokens": 10, "refill_rate": 5 }`. The server automatically annotates the caller's source IP when omitted.
-- `GET /api/v1/stats` – returns the distributed statistics table (per key and per source).
-- `GET /api/v1/debug` – returns the bucket state plus the same statistics snapshot for deeper diagnostics.
-- `GET /healthz` – liveness endpoint.
-
-The gRPC-style endpoint is available on `localhost:8081` at the method path `/ratelimiter.v1.RateLimiter/Allow` and expects protobuf framed payloads as described in `proto/rate_limiter.proto`.
-
-### Running with Docker Compose
-
-```
-make compose-up
-```
-
-This launches a NATS server and the rate-limiter service (which will synchronise buckets using the shared NATS instance) in detached mode, so your shell remains usable during the run. The Makefile now shells out to `hack/compose-up.sh`, a wrapper that prefers BuildKit for faster rebuilds but automatically retries without it if Docker reports the `unsupported shim version (3)` error seen on older containerd builds. Set `COMPOSE_DISABLE_BUILDKIT=1 make compose-up` to permanently pin the stack to the classic builder in restrictive environments. Once the containers start, `hack/wait-compose.sh` polls the health checks defined in `deploy/docker-compose.yml`, streaming updates until everything is healthy. Tail the stack output any time with `make compose-logs` and stop it with `make compose-down`.
-
-To prevent Docker's default bridge network from hijacking existing routes (which could momentarily sever SSH connectivity on remote hosts), the Compose file now provisions a dedicated bridge network named `ratelimiter_net` with the default subnet `172.31.255.0/28`. Override `RATE_LIMITER_NETWORK` and/or `RATE_LIMITER_SUBNET` when invoking `make compose-up` if that range clashes with your infrastructure.
+1. **Start the stack** – rate-limiter + NATS in detached mode:
+   ```bash
+   make compose-up
+   ```
+   The wrapper under `hack/compose-up.sh` prefers BuildKit for faster rebuilds, automatically retries without it if Docker reports the `unsupported shim version (3)` issue, and provisions a dedicated `ratelimiter_net` bridge on `172.31.255.0/28` so your SSH routes stay intact. Override `COMPOSE_DISABLE_BUILDKIT=1` or `RATE_LIMITER_NETWORK=/RATE_LIMITER_SUBNET` as needed.
+2. **Watch logs (optional)**
+   ```bash
+   make compose-logs
+   ```
+3. **Positive REST case**
+   ```bash
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"compose","tokens":1,"max_tokens":5,"refill_rate":2}' | jq
+   ```
+4. **Negative REST case** – loop until the allowance is exhausted:
+   ```bash
+   for i in $(seq 1 6); do
+     curl -sS -X POST http://localhost:8080/api/v1/allow \
+       -H "Content-Type: application/json" \
+       -d '{"key":"compose","tokens":1,"max_tokens":5,"refill_rate":1}' | jq
+   done
+   ```
+5. **Inspect stats or container logs**
+   ```bash
+   curl -sS http://localhost:8080/api/v1/stats | jq
+   (docker compose logs rate-limiter 2>/dev/null || docker-compose logs rate-limiter) | tail -n 20
+   ```
+6. **Clean up**
+   ```bash
+   make compose-down
+   ```
+   `hack/wait-compose.sh` automatically reports health status while the stack starts, and the teardown target removes containers, the bridge network, and the shared volume so repeated runs stay deterministic.
 
 ### Building a container
 
@@ -117,62 +173,105 @@ To prevent Docker's default bridge network from hijacking existing routes (which
 make docker-build
 ```
 
-### Deploying to Kubernetes
+### Kubernetes / Kind workflow (build → load → deploy → test → cleanup)
 
-First build and push an image that your cluster can access (or load it into a local cluster such as Kind). If you are using Kind and do not yet have a cluster running, create one first with the hardened wrapper that provisions an isolated Docker network and uses the repo's subnet-safe cluster configuration. This prevents Kind from creating the default `172.18.0.0/16` bridge that can temporarily hijack routes (and therefore SSH sessions) on remote machines:
+1. **Provision Kind (optional)** – creates a cluster on its own Docker network so SSH routes remain untouched:
+   ```bash
+   make kind-up
+   # equivalent to:
+   KIND_EXPERIMENTAL_DOCKER_NETWORK=ratelimiter-kind \
+     hack/kind-up.sh --wait 120s
+   ```
+   The helper configures the `ratelimiter-kind` bridge on `10.240.0.0/16` and reuses it across runs. If you rerun the script
+   while a cluster already exists you will see the `node(s) already exist for a cluster with the name "rate-limiter"` error;
+   in that case tear the environment down first via `make kind-down` and then bring it back up.
+2. **Build an image** – push to a registry or keep it local for Kind:
+   ```bash
+   make docker-build IMAGE=rate-limiter:local
+   ```
+3. **Load the image into Kind** (skip this when the cluster can pull from your registry directly):
+   ```bash
+   make kind-load IMAGE=rate-limiter:local KIND_CLUSTER=rate-limiter
+   ```
+4. **Deploy manifests** – apply the base resources (they reference a placeholder image out of the box):
+   ```bash
+   kubectl apply -f deploy/kubernetes/nats.yaml
+   kubectl apply -f deploy/kubernetes/rate-limiter.yaml
+   ```
+5. **Point the Deployment at your image** – either edit the manifest before applying it or patch the running deployment:
+   ```bash
+   kubectl set image deployment/rate-limiter \
+     rate-limiter=rate-limiter:local \
+     -n default  # swap the namespace if you deployed elsewhere
+   ```
+   If you skip this step Kubernetes will keep trying to pull `your-dockerhub-username/rate-limiter:latest` and the pods will
+   sit in `ErrImagePull`. The automated `make kube-smoke IMAGE=…` target performs this patching for you so you never forget it.
+6. **Wait for readiness**
+   ```bash
+   kubectl get pods -l app=rate-limiter
+   kubectl rollout status deployment/nats
+   kubectl rollout status deployment/rate-limiter
+   ```
+6. **Port-forward & test**
+   ```bash
+   kubectl port-forward service/rate-limiter 8080:8080 &
+   PORT_FORWARD_PID=$!
+   sleep 2
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"kube","tokens":1,"max_tokens":10,"refill_rate":3}' | jq
+   curl -sS -X POST http://localhost:8080/api/v1/allow \
+     -H "Content-Type: application/json" \
+     -d '{"key":"kube","tokens":20,"max_tokens":10,"refill_rate":3}' | jq
+   curl -sS http://localhost:8080/api/v1/stats | jq
+   kill $PORT_FORWARD_PID
+   ```
+7. **Clean up** – remove manifests and optionally the Kind cluster when you are done:
+   ```bash
+   kubectl delete -f deploy/kubernetes/rate-limiter.yaml
+   kubectl delete -f deploy/kubernetes/nats.yaml
+   make kind-down   # or: kind delete cluster --name rate-limiter
+   ```
+8. **Automated smoke** – mirrors the CI pipeline if you want a scripted confidence check (it handles `kubectl set image`, waits
+   for readiness, and executes a REST call against the ClusterIP service):
+   ```bash
+   make kube-smoke IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo
+   ```
 
-```bash
-make kind-up
-```
+The deployment exposes port `8080` for REST and `8081` for gRPC. Update the ConfigMap to customise limit defaults, or use the Helm chart for a more parameterised workflow.
 
-The wrapper is a thin shim over:
+### Deploying with Helm (install → test → cleanup)
 
-```bash
-KIND_EXPERIMENTAL_DOCKER_NETWORK=ratelimiter-kind \
-  hack/kind-up.sh --wait 120s
-```
+1. **Install or upgrade** – point the chart at the exact image you built (include the tag) and the namespace you want to use:
+   ```bash
+   IMAGE=rate-limiter:local \
+   KUBE_NAMESPACE=ratelimiter-demo \
+   HELM_RELEASE=ratelimiter-demo \
+   make helm-install
+   ```
+   The Makefile splits the repository and tag for you, so both `rate-limiter:local` and `ghcr.io/me/rate-limiter:v1.2.3` work as
+   long as a tag is present. If you are targeting Kind or another air-gapped environment, run `make kind-load IMAGE=rate-limiter:local KIND_CLUSTER=rate-limiter`
+   beforehand so the nodes already contain the image tag referenced in your values.
+2. **Run the built-in test hook** (optional but recommended):
+   ```bash
+   helm test ratelimiter-demo -n ratelimiter-demo
+   ```
+3. **Customise** – flip `nats.enabled=false` to reuse an existing broker, or pass extra env vars via `values.yaml` / `--set-json env='[{"name":"LOG_PATH","value":"/data/runtime.log"}]'`.
+4. **Uninstall when finished**
+   ```bash
+   make helm-uninstall KUBE_NAMESPACE=ratelimiter-demo HELM_RELEASE=ratelimiter-demo
+   ```
 
-It creates (or reuses) the `ratelimiter-kind` Docker network on the `10.240.0.0/16` subnet, then invokes `kind create cluster --name rate-limiter --config deploy/kind/cluster.yaml` so both the container and Kubernetes-level subnets avoid conflicts with common datacentre ranges.
+The chart bundles the ConfigMap, Deployment, Service, optional NATS dependency, and a smoke pod so you get the same start/test/cleanup flow as the raw manifests but with Helm's release tracking.
 
-Then build the image:
+### Cleanup quick reference
 
-```bash
-make docker-build IMAGE=ghcr.io/your-user/rate-limiter:latest
-```
-
-Apply the manifests under `deploy/kubernetes` (update the container image reference in `rate-limiter.yaml` to match your registry):
-
-```bash
-kubectl apply -f deploy/kubernetes/nats.yaml
-kubectl apply -f deploy/kubernetes/rate-limiter.yaml
-```
-
-Wait for the pods to become ready and inspect their status:
-
-```bash
-kubectl get pods -l app=rate-limiter
-kubectl rollout status deployment/rate-limiter
-```
-
-To send a REST request against the cluster from your workstation, port-forward the HTTP service and execute a `curl` request:
-
-```bash
-kubectl port-forward service/rate-limiter 8080:8080 &
-PORT_FORWARD_PID=$!
-sleep 2
-curl -sS -X POST http://localhost:8080/api/v1/allow \
-  -H "Content-Type: application/json" \
-  -d '{"key":"demo","tokens":1,"max_tokens":10,"refill_rate":5}' | jq
-kill $PORT_FORWARD_PID
-```
-
-For automated verification you can rely on the provided smoke test script (which is what the CI pipeline runs):
-
-```bash
-make kube-smoke IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo
-```
-
-The deployment exposes port `8080` for REST and `8081` for the gRPC endpoint. Update the `ConfigMap` inside the manifest to customise limits or environment variables.
+- **Local binary** – hit `Ctrl+C` in the terminal that is running `go run ./cmd/ratelimiter`.
+- **gRPC smoke helper** – nothing to do; `make grpc-smoke` tears the temporary process down for you.
+- **Docker Compose** – `make compose-down`.
+- **Raw Kubernetes manifests** – `kubectl delete -f deploy/kubernetes/rate-limiter.yaml && kubectl delete -f deploy/kubernetes/nats.yaml`.
+- **Helm release** – `make helm-uninstall KUBE_NAMESPACE=<ns> HELM_RELEASE=<name>`.
+- **Kind cluster** – `make kind-down` (removes the `rate-limiter` cluster but leaves the reusable Docker network intact).
 
 ## Configuration
 
