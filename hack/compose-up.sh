@@ -14,7 +14,10 @@ run_compose(){
   local buildkit=$1
   shift || true
   local env_prefix=(COMPOSE_DOCKER_CLI_BUILD=$buildkit DOCKER_BUILDKIT=$buildkit)
-  (cd "$PROJECT_DIR" && "${env_prefix[@]}" "${CMD_ARR[@]}" "${ARGS[@]}" "$@")
+  (
+    cd "$PROJECT_DIR"
+    env "${env_prefix[@]}" "${CMD_ARR[@]}" "${ARGS[@]}" "$@"
+  )
 }
 tmp_log=$(mktemp)
 trap 'rm -f "$tmp_log"' EXIT

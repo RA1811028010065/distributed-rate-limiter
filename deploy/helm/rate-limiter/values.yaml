@@ -1,0 +1,30 @@
+replicaCount: 2
+
+image:
+  repository: your-dockerhub-username/rate-limiter
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+  grpcPort: 8081
+
+config:
+  httpAddr: ":8080"
+  grpcAddr: ":8081"
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+env: []
+
+nats:
+  enabled: true
+  image: nats:2.10-alpine
+  replicaCount: 1
+  service:
+    port: 4222
+    monitorPort: 8222

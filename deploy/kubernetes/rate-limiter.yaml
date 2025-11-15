@@ -40,7 +40,7 @@ spec:
     spec:
       containers:
         - name: rate-limiter
-          image: your-dockerhub-username/rate-limiter:latest
+          image: rate-limiter:local
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:

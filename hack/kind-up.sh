@@ -17,6 +17,13 @@ create_network() {
   docker network create "${NETWORK_NAME}" --driver bridge --subnet "${NETWORK_SUBNET}"
 }
 
+cluster_exists() {
+  if kind get clusters 2>/dev/null | grep -Fxq "${CLUSTER_NAME}"; then
+    return 0
+  fi
+  return 1
+}
+
 create_cluster() {
   echo "creating kind cluster '${CLUSTER_NAME}' using network '${NETWORK_NAME}'"
   KIND_EXPERIMENTAL_DOCKER_NETWORK="${NETWORK_NAME}" kind create cluster \
@@ -26,4 +33,8 @@ create_cluster() {
 }
 
 create_network
+if cluster_exists; then
+  echo "kind cluster '${CLUSTER_NAME}' already exists (run 'make kind-down' to recreate)"
+  exit 0
+fi
 create_cluster "$@"
