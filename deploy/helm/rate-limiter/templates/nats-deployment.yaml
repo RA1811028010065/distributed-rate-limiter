@@ -1,0 +1,25 @@
+{{- if .Values.nats.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rate-limiter.natsName" . }}
+  labels:
+    app: {{ include "rate-limiter.natsName" . }}
+spec:
+  replicas: {{ .Values.nats.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "rate-limiter.natsName" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "rate-limiter.natsName" . }}
+    spec:
+      containers:
+        - name: nats
+          image: {{ .Values.nats.image }}
+          args: ["-js", "-m", "{{ .Values.nats.service.monitorPort }}"]
+          ports:
+            - containerPort: {{ .Values.nats.service.port }}
+            - containerPort: {{ .Values.nats.service.monitorPort }}
+{{- end }}

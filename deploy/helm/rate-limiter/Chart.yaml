@@ -1,0 +1,6 @@
+apiVersion: v2
+name: rate-limiter
+description: Distributed rate limiter service with optional NATS dependency
+version: 0.1.0
+appVersion: "1.0.0"
+type: application
