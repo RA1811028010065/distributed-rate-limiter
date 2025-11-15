@@ -43,6 +43,14 @@ This document outlines how to exercise the distributed rate limiter manually usi
    curl -sS http://localhost:8080/api/v1/debug | jq
    ```
    This aggregates both the bucket internals and the statistics snapshot used by `/api/v1/stats`.
+7. **Exercise the gRPC endpoint** – send a protobuf-framed request using the bundled helper (no external tooling required):
+   ```bash
+   make grpc-smoke
+   # or tweak the payload
+   go run ./cmd/grpcclient -addr http://localhost:8081 \
+     -key grpc-local -tokens 1 -max-tokens 5 -refill-rate 2 -source demo
+   ```
+   The program uses `internal/pbcodec` to encode/decode the payload so you verify the transport in the same way CI does.
 7. **Review structured logs** – by default the service mirrors all decisions (including the chosen algorithm and reason) to `logs/runtime.log`.
    ```bash
    tail -n 20 logs/runtime.log
@@ -141,6 +149,30 @@ This document outlines how to exercise the distributed rate limiter manually usi
    kubectl delete -f deploy/kubernetes/rate-limiter.yaml
    kubectl delete -f deploy/kubernetes/nats.yaml
    kind delete cluster --name rate-limiter
+   ```
+
+## 4. Helm workflow
+
+The Helm chart in `deploy/helm/rate-limiter` mirrors the manifests above but wraps them in a reusable release. Use it when you want repeatable installs or to toggle the embedded NATS dependency:
+
+1. **Install/upgrade the release**
+   ```bash
+   IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo HELM_RELEASE=ratelimiter-demo make helm-install
+   ```
+2. **Run the built-in test hook** (optional confidence check)
+   ```bash
+   helm test ratelimiter-demo -n ratelimiter-demo
+   ```
+3. **Override values** – disable the bundled NATS or inject extra env vars:
+   ```bash
+   helm upgrade --install ratelimiter-demo deploy/helm/rate-limiter \
+     -n ratelimiter-demo --create-namespace \
+     --set nats.enabled=false \
+     --set-json env='[{"name":"LOG_PATH","value":"/data/runtime.log"}]'
+   ```
+4. **Remove the release**
+   ```bash
+   make helm-uninstall KUBE_NAMESPACE=ratelimiter-demo HELM_RELEASE=ratelimiter-demo
    ```
 
 ## 5. Automated smoke test (optional)

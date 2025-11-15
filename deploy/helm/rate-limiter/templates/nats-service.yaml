@@ -1,0 +1,18 @@
+{{- if .Values.nats.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rate-limiter.natsName" . }}
+  labels:
+    app: {{ include "rate-limiter.natsName" . }}
+spec:
+  selector:
+    app: {{ include "rate-limiter.natsName" . }}
+  ports:
+    - name: client
+      port: {{ .Values.nats.service.port }}
+      targetPort: {{ .Values.nats.service.port }}
+    - name: monitoring
+      port: {{ .Values.nats.service.monitorPort }}
+      targetPort: {{ .Values.nats.service.monitorPort }}
+{{- end }}
