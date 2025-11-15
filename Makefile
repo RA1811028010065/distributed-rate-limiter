@@ -9,6 +9,7 @@ HELM_CHART ?= deploy/helm/rate-limiter
 GRPC_CLIENT_ADDR ?= http://localhost:8081
 DOCKER_COMPOSE ?= $(shell if command -v docker-compose >/dev/null 2>&1; then echo docker-compose; else echo "docker compose"; fi)
 COMPOSE_PROJECT ?= deploy
+KIND_CLUSTER ?= rate-limiter
 
 build:
 	mkdir -p bin
@@ -79,3 +80,6 @@ kind-up:
 
 kind-down:
 	kind delete cluster --name rate-limiter || true
+
+kind-load:
+	kind load docker-image $(IMAGE) --name $(KIND_CLUSTER)

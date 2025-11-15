@@ -152,6 +152,14 @@ Then build the image:
 make docker-build IMAGE=ghcr.io/your-user/rate-limiter:latest
 ```
 
+When targeting the bundled Kind cluster (or any other local Kind instance) load the freshly built image into the nodes before applying manifests so Kubernetes does not try to pull it from a public registry:
+
+```bash
+make kind-load IMAGE=rate-limiter:local KIND_CLUSTER=rate-limiter
+```
+
+If you are publishing the image to a remote registry, reuse that fully qualified reference when calling `make kind-load` or skip the load step entirely if your cluster can reach the registry directly.
+
 Apply the manifests under `deploy/kubernetes` (update the container image reference in `rate-limiter.yaml` to match your registry):
 
 ```bash

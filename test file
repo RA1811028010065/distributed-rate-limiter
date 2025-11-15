@@ -102,11 +102,12 @@ This document outlines how to exercise the distributed rate limiter manually usi
    The helper script automatically creates an isolated Docker network (`ratelimiter-kind` on `10.240.0.0/16`) before invoking
    `kind create cluster --name rate-limiter --config deploy/kind/cluster.yaml`. This avoids the stock `kind` bridge that can
    disrupt SSH sessions on hosts whose uplinks reside in the `172.18.0.0/16` space.
-2. **Build a local image** (Kind example shown):
+2. **Build and load a local image** (Kind example shown):
    ```bash
    make docker-build IMAGE=rate-limiter:local
-   kind load docker-image rate-limiter:local
+   make kind-load IMAGE=rate-limiter:local KIND_CLUSTER=rate-limiter
    ```
+   If you are using a remote cluster, push the image to a registry it can reach and pass the fully qualified reference to both commands (the `kind-load` step can be skipped when the cluster pulls directly from the registry).
 3. **Deploy dependencies**
    ```bash
    kubectl apply -f deploy/kubernetes/nats.yaml
