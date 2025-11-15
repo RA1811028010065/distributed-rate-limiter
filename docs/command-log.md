@@ -1,6 +1,6 @@
 # Command Verification Log
 
-_Last updated: 2025-11-15 05:23:45 UTC._
+_Last updated: 2025-11-15 04:48:12 UTC._
 
 Each entry captures the exact command that was executed in this repository, what it proves, and the raw terminal output so you can reproduce the same workflow locally.
 
@@ -45,24 +45,4 @@ $ make grpc-smoke
 }
 + set +x
 [grpc-smoke] success
-```
-
-## 3. `make helm-install` (with a PATH shim)
-
-**Purpose:** Ensure the `helm-install` Makefile target invokes the helper script under Bash and wires image/namespace overrides correctly. A lightweight `helm` shim was placed earlier in `PATH` for this verification; on a real workstation the shim is unnecessary because the actual Helm CLI will be present.
-
-**Command & output:**
-```bash
-$ PATH="$PWD/.tmp/bin:$PATH" IMAGE=rate-limiter:local HELM_RELEASE=demo-release \
-  KUBE_NAMESPACE=demo-ns make helm-install HELM_EXTRA_ARGS="--set foo=bar"
-IMAGE=rate-limiter:local \
-KUBE_NAMESPACE=demo-ns \
-HELM_RELEASE=demo-release \
-HELM_CHART=deploy/helm/rate-limiter \
-HELM_EXTRA_ARGS="--set foo=bar" \
-./hack/helm-install.sh
-+ helm upgrade --install demo-release deploy/helm/rate-limiter --namespace demo-ns --create-namespace --set image.repository=rate-limiter --set image.tag=local --set foo=bar
-FAKE HELM upgrade --install demo-release deploy/helm/rate-limiter --namespace demo-ns --create-namespace --set image.repository=rate-limiter --set image.tag=local --set foo=bar
-+ set +x
-[helm-install] release 'demo-release' installed in namespace 'demo-ns'
 ```

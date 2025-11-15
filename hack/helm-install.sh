@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-if ! command -v helm >/dev/null 2>&1; then
-  echo "[helm-install] helm binary not found in \$PATH" >&2
-  echo "[helm-install] install Helm from https://helm.sh/docs/intro/install/ and retry" >&2
-  exit 127
-fi
 HELM_RELEASE=${HELM_RELEASE:-rate-limiter}
 KUBE_NAMESPACE=${KUBE_NAMESPACE:-rate-limiter}
 HELM_CHART=${HELM_CHART:-deploy/helm/rate-limiter}
