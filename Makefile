@@ -1,5 +1,5 @@
 .PHONY: build run test docker-build compose-up compose-down compose-logs kube-apply kube-delete kube-smoke kind-up kind-down \
-        kind-load grpc-smoke helm-install helm-uninstall
+	grpc-smoke helm-install helm-uninstall
 
 BINARY := ratelimiter
 IMAGE ?= rate-limiter:local

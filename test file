@@ -51,7 +51,6 @@ This document outlines how to exercise the distributed rate limiter manually usi
      -key grpc-local -tokens 1 -max-tokens 5 -refill-rate 2 -source demo
    ```
    The program uses `internal/pbcodec` to encode/decode the payload so you verify the transport in the same way CI does.
-   > **Reminder:** ensure the service is running (via `go run ./cmd/ratelimiter`, `make compose-up`, etc.) before invoking `make grpc-smoke` or the helper will report `connection refused`.
 7. **Review structured logs** – by default the service mirrors all decisions (including the chosen algorithm and reason) to `logs/runtime.log`.
    ```bash
    tail -n 20 logs/runtime.log
@@ -161,7 +160,6 @@ The Helm chart in `deploy/helm/rate-limiter` mirrors the manifests above but wra
    ```bash
    IMAGE=rate-limiter:local KUBE_NAMESPACE=ratelimiter-demo HELM_RELEASE=ratelimiter-demo make helm-install
    ```
-   Load the image into Kind beforehand (`make kind-load IMAGE=rate-limiter:local KIND_CLUSTER=rate-limiter`) if the cluster cannot reach your registry directly.
 2. **Run the built-in test hook** (optional confidence check)
    ```bash
    helm test ratelimiter-demo -n ratelimiter-demo

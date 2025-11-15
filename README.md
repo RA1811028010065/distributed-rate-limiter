@@ -111,8 +111,6 @@ go run ./cmd/grpcclient -addr http://localhost:8081 \
   -key demo -tokens 1 -max-tokens 5 -refill-rate 5 -source cli
 ```
 
-> **Important:** Start the rate-limiter service first (for example via `go run ./cmd/ratelimiter` or `make compose-up`) so the helper has an endpoint listening on port 8081.
-
 The utility composes a protobuf payload with `internal/pbcodec`, wraps it in the gRPC wire framing that `pkg/simplegrpc` expects, and prints the decoded response so you can verify both codecs end-to-end without needing `grpcurl`.
 
 ### Running with Docker Compose
@@ -207,8 +205,6 @@ IMAGE=ghcr.io/your-user/rate-limiter:latest make helm-install KUBE_NAMESPACE=rat
 helm test ratelimiter-demo -n ratelimiter-demo
 make helm-uninstall KUBE_NAMESPACE=ratelimiter-demo HELM_RELEASE=ratelimiter-demo
 ```
-
-For Kind or other air-gapped clusters remember to `make kind-load IMAGE=rate-limiter:local` (or whatever tag you supplied to `IMAGE=`) before installing so Helm's Deployment can start without `ErrImagePull`.
 
 Set `nats.enabled=false` if your cluster already runs a shared NATS instance and pass additional env pairs through `values.yaml` or `--set-json env='[{"name":"LOG_PATH","value":"/data/runtime.log"}]'` to tweak runtime behaviour.
 
