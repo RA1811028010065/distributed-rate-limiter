@@ -33,6 +33,56 @@ This project showcases a self-contained distributed rate-limiter implemented in 
 └── README.md
 ```
 
+### Component deep dive
+
+- **`cmd/ratelimiter/main.go`** wires the HTTP router (`internal/server`) and the unary gRPC endpoint (`pkg/simplegrpc`) togethe
+r, loads configuration from the `ConfigMap` / environment, initialises the distributed bus, and keeps the process alive with hea
+lth logging.【F:cmd/ratelimiter/main.go†L15-L123】
+- **`cmd/grpcclient/main.go`** is a minimal CLI that encodes protobuf requests via `internal/pbcodec`, posts them over HTTP (us
+ing the gRPC-over-HTTP transport), and prints the decoded response so you can script load tests or smoke checks without third-pa
+rty tooling.【F:cmd/grpcclient/main.go†L17-L173】
+- **`internal/ratelimiter/service.go`** owns the hybrid algorithms (token bucket, leaky bucket, sliding window) plus replication
+hooks so state changes are announced on the bus and reconciled when other nodes respond.【F:internal/ratelimiter/service.go†L84-L
+343】
+- **`pkg/natsutil`** abstracts the publish/subscribe plane; the production path speaks the NATS protocol (`NATS_URL=nats://...`),
+while the fallback uses an in-memory channel fan-out for single-process development. Both options expose the same interface so t
+he rest of the code stays oblivious.【F:pkg/natsutil/nats.go†L13-L120】
+- **`pkg/simplegrpc`** implements just enough of unary gRPC over HTTP/2 semantics to let the service parse protobuf frames withou
+t bringing in the full gRPC stack – perfect for resource-constrained demos.【F:pkg/simplegrpc/server.go†L15-L155】
+- **`internal/pbcodec`** hand-rolls the protobuf marshaler/unmarshaler for the request/response messages defined in [`proto/rate_
+limiter.proto`](proto/rate_limiter.proto), ensuring gRPC and REST share the same structs.【F:internal/pbcodec/codec.go†L14-L167】
+- **`deploy/docker-compose.yml`** starts two containers (rate-limiter + NATS) on a dedicated bridge network so you can try distrib
+uted coordination locally; override environment variables inside the YAML or via `docker compose` to experiment with parameters.
+- **`deploy/kubernetes/nats.yaml`** provides a namespaced Deployment + Service for NATS, and **`deploy/kubernetes/rate-limiter.ya
+ml`** contains the ConfigMap, Service, and multi-replica Deployment for the Go service. Both manifests are intentionally verbose,
+showing readiness probes, environment bindings, and service ports so newcomers can map YAML to runtime behaviour.【F:deploy/kuber
+netes/nats.yaml†L1-L44】【F:deploy/kubernetes/rate-limiter.yaml†L1-L48】
+- **`deploy/helm/rate-limiter`** mirrors the raw manifests but exposes every knob (replicas, probes, env overrides, NATS toggles,
+image tags) as chart values. Each template contains inline comments explaining what the block controls to make Helm approachable
+for first-time users.【F:deploy/helm/rate-limiter/templates/deployment.yaml†L1-L93】
+- **`hack/*.sh` helpers** bundle the repetitive workflows: Compose orchestration, Kind lifecycle, Helm install, and the gRPC smok
+e test that temporarily launches the binary, waits for readiness, runs the protobuf client, and captures structured logs.
+
+### How the stack fits together
+
+1. **Request ingress** – REST callers hit `internal/server` handlers while SDKs can call `/ratelimiter.v1.RateLimiter/Allow` via
+ the gRPC transport. Both paths normalise into a shared `AllowRequest` struct produced by `internal/pbcodec` so business logic i
+s reused.
+2. **Decision engine** – `internal/ratelimiter/service.go` inspects current bucket state (in-memory map with per-key telemetry),
+ chooses the best algorithm, updates counters, and emits a structured `Decision` both to stdout and the optional audit log under
+ `logs/`.
+3. **Event propagation** – whenever state mutates, the service publishes delta events through `pkg/natsutil`. In clustered runs (D
+ocker Compose, Kubernetes, Helm) every replica subscribes to the same topic so burst traffic handled by one pod still updates th
+e others in milliseconds. When `NATS_URL` is omitted the in-memory bus keeps behaviour identical for single-node development.
+4. **Persistence and observability** – runtime stats surface via `/api/v1/stats` and `/api/v1/debug` (rendered by `internal/serve
+r/handlers.go`), letting you watch tokens drain/refill in real time regardless of transport.
+5. **Container orchestration** – Docker images created by `make docker-build` embed the statically linked Go binary. Docker Compo
+se, Kubernetes YAML, and the Helm chart all mount the same image and inject configuration through environment variables and `Conf
+igMap` keys, meaning the exact same binary powers local CLIs, containers, and pods.
+
+Because everything – from protobuf definitions and transport adapters to deployment YAML – lives in this repository, you can fol
+low the data flow end-to-end without switching contexts.
+
 ## Continuous integration pipeline
 
 The repository ships with a GitHub Actions workflow located at [`.github/workflows/ci.yml`](.github/workflows/ci.yml). It runs formatting, `go vet`, unit tests, and provisions a temporary [Kind](https://kind.sigs.k8s.io/) cluster to validate the Kubernetes manifests. During the smoke test the container image is built, loaded into the cluster, deployed alongside NATS, and a REST request is executed against the service to ensure end-to-end functionality. The smoke harness now waits for each deployment to report readiness, confirms the `rate-limiter` service has active endpoints before issuing traffic, retries the verification request with bounded timeouts, and emits cluster diagnostics automatically on failure so problems can be triaged quickly both in CI and on local machines.
@@ -80,24 +130,12 @@ kubectl version --client
 kind version
 ```
 
-With tooling ready, clone the repository and follow the flows in [the manual testing guide](test%20file) to exercise the service locally, via Docker Compose, and on Kubernetes.
+### Reproducible command log
 
-### Running locally
-
-```bash
-# Run automated tests
-go test -v ./...
-
-# Start the service with the in-memory event bus
-go run ./cmd/ratelimiter
-```
-
-The REST API defaults to `http://localhost:8080`:
-
-- `POST /api/v1/allow` – body: `{ "key": "user-1", "tokens": 1, "max_tokens": 10, "refill_rate": 5 }`. The server automatically annotates the caller's source IP when omitted.
-- `GET /api/v1/stats` – returns the distributed statistics table (per key and per source).
-- `GET /api/v1/debug` – returns the bucket state plus the same statistics snapshot for deeper diagnostics.
-- `GET /healthz` – liveness endpoint.
+Every change set now comes with a verbatim CLI transcript so you can see exactly which commands passed locally before any pull
+request was opened. The latest log lives at [`docs/command-log.md`](docs/command-log.md) and is updated alongside the code whene
+ver a new workflow (tests, smoke helpers, etc.) is exercised. Each entry documents the purpose of the command, the invocation, a
+nd the raw stdout/stderr for easy reproduction.
 
 The gRPC-style endpoint is available on `localhost:8081` at the method path `/ratelimiter.v1.RateLimiter/Allow` and expects protobuf framed payloads as described in `proto/rate_limiter.proto`.
 
