@@ -16,6 +16,21 @@ spec:
         - -c
         - |
           set -euo pipefail
-          curl -fsS -X POST http://{{ include "rate-limiter.fullname" . }}:{{ .Values.service.httpPort }}/api/v1/allow \
+          service="{{ include "rate-limiter.fullname" . }}"
+          port="{{ .Values.service.httpPort }}"
+
+          # The deployment may still be rolling out when the test hook runs.
+          # Poll the lightweight /healthz endpoint until it succeeds before
+          # issuing the stateful allow request so the hook is resilient to
+          # startup latency.
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://${service}:${port}/healthz" >/dev/null; then
+              break
+            fi
+            echo "waiting for ${service} to become ready (attempt ${attempt})"
+            sleep 2
+          done
+
+          curl -fsS -X POST "http://${service}:${port}/api/v1/allow" \
             -H 'Content-Type: application/json' \
             -d '{"key":"helm-test","tokens":1,"max_tokens":5,"refill_rate":5}'
