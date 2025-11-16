@@ -16,15 +16,20 @@ import (
 
 	"github.com/example/distributed-rate-limiter/internal/ratelimiter"
 	"github.com/example/distributed-rate-limiter/internal/server"
-	"github.com/example/distributed-rate-limiter/pkg/natsutil"
+	"github.com/example/distributed-rate-limiter/internal/storage"
 	"github.com/example/distributed-rate-limiter/pkg/simplegrpc"
 )
 
 func main() {
 	httpAddr := flag.String("http", getEnv("HTTP_ADDR", ":8080"), "HTTP listen address")
 	grpcAddr := flag.String("grpc", getEnv("GRPC_ADDR", ":8081"), "gRPC listen address")
-	natsURL := flag.String("nats", os.Getenv("NATS_URL"), "NATS connection URL")
-	logPath := flag.String("log-path", getEnv("LOG_PATH", "logs/runtime.log"), "file to append structured decisions and runtime logs")
+	backend := flag.String("store", getEnv("STORE_BACKEND", "memory"), "config store backend (memory|redis|postgres)")
+	redisURL := flag.String("redis", os.Getenv("REDIS_URL"), "redis connection URL")
+	pgURL := flag.String("postgres", os.Getenv("POSTGRES_DSN"), "postgres connection DSN")
+	logPath := flag.String("log-path", getEnv("LOG_PATH", "logs/runtime.log"), "file to append logs")
+	verbose := flag.Bool("verbose", getEnv("VERBOSE_LOGGING", "false") == "true", "enable verbose logging")
+	authUser := flag.String("auth-user", os.Getenv("CONFIG_AUTH_USER"), "basic auth username for config endpoints")
+	authPass := flag.String("auth-pass", os.Getenv("CONFIG_AUTH_PASS"), "basic auth password for config endpoints")
 	flag.Parse()
 
 	logger, cleanup, err := setupLogger(*logPath)
@@ -33,26 +38,18 @@ func main() {
 	}
 	defer cleanup()
 
-	var bus natsutil.Bus
-	if *natsURL != "" {
-		client, err := natsutil.Connect(*natsURL)
-		if err != nil {
-			logger.Printf("failed to connect to NATS (%s): %v, falling back to in-memory bus", *natsURL, err)
-			bus = natsutil.NewInMemoryBus()
-		} else {
-			bus = client
-			logger.Printf("connected to NATS server at %s", *natsURL)
-		}
-	} else {
-		bus = natsutil.NewInMemoryBus()
-		logger.Printf("using in-memory bus; set NATS_URL to enable NATS synchronization")
-	}
+	store, storeCleanup := buildStore(*backend, *redisURL, *pgURL, logger)
+	defer storeCleanup()
 
-	limiter := ratelimiter.New(bus, ratelimiter.WithLogger(logger))
+	limiter := ratelimiter.New(
+		ratelimiter.WithLogger(logger),
+		ratelimiter.WithVerboseLogging(*verbose),
+		ratelimiter.WithConfigStore(store),
+	)
 
 	httpSrv := &http.Server{
 		Addr:    *httpAddr,
-		Handler: server.NewHTTPServer(limiter).Handler(),
+		Handler: server.NewHTTPServer(limiter, store, *authUser, *authPass).Handler(),
 	}
 
 	grpcSrv := simplegrpc.NewServer()
@@ -95,6 +92,19 @@ func main() {
 	defer cancel()
 	httpSrv.Shutdown(ctx)
 	logger.Printf("shutdown complete")
+}
+
+func buildStore(backend, redisURL, pgURL string, logger *log.Logger) (storage.ConfigStore, func()) {
+	switch strings.ToLower(strings.TrimSpace(backend)) {
+	case "redis":
+		logger.Printf("redis backend selected; using in-process placeholder store")
+		return storage.NewRedisConfigStore(logger), func() {}
+	case "postgres":
+		logger.Printf("postgres backend selected; using in-process placeholder store")
+		return storage.NewPostgresConfigStore(logger), func() {}
+	default:
+		return storage.NewMemoryConfigStore(), func() {}
+	}
 }
 
 func getEnv(key, fallback string) string {

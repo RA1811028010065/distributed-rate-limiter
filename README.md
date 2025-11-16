@@ -1,11 +1,12 @@
 # Distributed Rate Limiter
 
-This project showcases a self-contained distributed rate-limiter implemented in Go. It exposes both REST and gRPC-style endpoints, synchronises state via NATS or an in-memory bus, and is fully containerised for deployment on Kubernetes. For a concise overview with sample interactions, see [`docs/overview.md`](docs/overview.md); for a deep architectural explanation covering every component and technology choice, read [`docs/product.md`](docs/product.md). Algorithm-by-algorithm deep dives live under [`docs/patterns/`](docs/patterns/).
+This project showcases a self-contained distributed rate-limiter implemented in Go. It exposes both REST and gRPC-style endpoints, persists configuration through pluggable stores, and is fully containerised for deployment on Kubernetes. For a concise overview with sample interactions, see [`docs/overview.md`](docs/overview.md); for a deep architectural explanation covering every component and technology choice, read [`docs/product.md`](docs/product.md). Algorithm-by-algorithm deep dives live under [`docs/patterns/`](docs/patterns/).
 
 ## Features
 
-- **Hybrid rate limiting** that auto-selects between token bucket, leaky bucket, and sliding window techniques based on live traffic telemetry, keeping bursty and sustained workloads in check.【F:internal/ratelimiter/service.go†L84-L343】
-- **Token bucket rate limiting** with distributed synchronisation through NATS or an in-memory fallback.
+- **Server-side rate limit definitions** managed through an authenticated REST endpoint so clients cannot self-assign generous limits.【F:internal/server/http.go†L34-L86】
+- **Pluggable persistence** with in-memory, Redis, and Postgres-backed stores to keep rate limit definitions durable across restarts.【F:internal/storage/store.go†L1-L24】【F:internal/storage/redis_store.go†L1-L42】【F:internal/storage/postgres_store.go†L1-L42】
+- **Token bucket rate limiting** with verbose decision logging that can be toggled via environment flags for operational debugging.【F:internal/ratelimiter/service.go†L86-L156】
 - **gRPC-style API** transported over HTTP using a lightweight server implementation compatible with protobuf-encoded messages.
 - **REST API** for simple integration and observability endpoints, including live statistics and health checks.
 - **Structured decision logging** that fans out to stdout and an on-disk log file for auditability.

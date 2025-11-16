@@ -8,19 +8,25 @@ import (
 
 	"github.com/example/distributed-rate-limiter/internal/pbcodec"
 	"github.com/example/distributed-rate-limiter/internal/ratelimiter"
+	"github.com/example/distributed-rate-limiter/internal/storage"
 )
 
 type HTTPServer struct {
 	limiter *ratelimiter.RateLimiter
+	store   storage.ConfigStore
+
+	basicUser string
+	basicPass string
 }
 
-func NewHTTPServer(limiter *ratelimiter.RateLimiter) *HTTPServer {
-	return &HTTPServer{limiter: limiter}
+func NewHTTPServer(limiter *ratelimiter.RateLimiter, store storage.ConfigStore, user, pass string) *HTTPServer {
+	return &HTTPServer{limiter: limiter, store: store, basicUser: user, basicPass: pass}
 }
 
 func (h *HTTPServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/allow", h.handleAllow)
+	mux.HandleFunc("/api/v1/config", h.handleConfig)
 	mux.HandleFunc("/api/v1/debug", h.handleDebug)
 	mux.HandleFunc("/api/v1/stats", h.handleStats)
 	mux.HandleFunc("/healthz", h.handleHealth)
@@ -48,6 +54,42 @@ func (h *HTTPServer) handleAllow(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
+}
+
+func (h *HTTPServer) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if !h.authorize(r) {
+		w.Header().Set("WWW-Authenticate", "Basic realm=rate-limiter")
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	switch r.Method {
+	case http.MethodPost, http.MethodPut:
+		defer r.Body.Close()
+		var cfg storage.RateLimitConfig
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(cfg.Key) == "" {
+			http.Error(w, "key is required", http.StatusBadRequest)
+			return
+		}
+		if err := h.limiter.ConfigureLimit(r.Context(), cfg); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(cfg)
+	case http.MethodGet:
+		cfgs, err := h.store.List(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(cfgs)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func (h *HTTPServer) handleDebug(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +122,17 @@ func (h *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
+}
+
+func (h *HTTPServer) authorize(r *http.Request) bool {
+	if h.basicUser == "" && h.basicPass == "" {
+		return true
+	}
+	user, pass, ok := r.BasicAuth()
+	if !ok {
+		return false
+	}
+	return user == h.basicUser && pass == h.basicPass
 }
 
 func inferSource(r *http.Request) string {
